@@ -176,6 +176,7 @@ struct ckpool_instance {
 	proc_instance_t main;
 
 	proc_instance_t generator;
+	proc_instance_t rootstock;
 	proc_instance_t stratifier;
 	proc_instance_t connector;
 
@@ -232,6 +233,15 @@ struct ckpool_instance {
 	char *donaddress; // Donation address
 	bool donvalid; // Donation address works on this network
 
+	/* Rootstock data */
+	int rskds;
+	server_instance_t **rskdservers;
+	char **rskdurl;
+	char **rskdauth;
+	char **rskdpass;
+	int rskpollperiod;
+	int rsknotifypolicy;
+
 	/* Stratum options */
 	server_instance_t **servers;
 	char **serverurl; // Array of URLs to bind our server/proxy to
@@ -255,6 +265,7 @@ struct ckpool_instance {
 
 	/* Private data for each process */
 	void *gdata;
+	void *rdata;
 	void *sdata;
 	void *cdata;
 };

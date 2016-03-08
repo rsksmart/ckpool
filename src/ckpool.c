@@ -1260,6 +1260,23 @@ static void parse_btcds(ckpool_t *ckp, const json_t *arr_val, const int arr_size
 	}
 }
 
+static void parse_rskds(ckpool_t *ckp, const json_t *arr_val, const int arr_size)
+{
+	json_t *val;
+	int i;
+
+	ckp->rskds = arr_size;
+	ckp->rskdurl = ckzalloc(sizeof(char *) * arr_size);
+	ckp->rskdauth = ckzalloc(sizeof(char *) * arr_size);
+	ckp->rskdpass = ckzalloc(sizeof(char *) * arr_size);
+	for (i = 0; i < arr_size; i++) {
+		val = json_array_get(arr_val, i);
+		json_get_string(&ckp->rskdurl[i], val, "url");
+		json_get_string(&ckp->rskdauth[i], val, "auth");
+		json_get_string(&ckp->rskdpass[i], val, "pass");
+	}
+}
+
 static void parse_proxies(ckpool_t *ckp, const json_t *arr_val, const int arr_size)
 {
 	json_t *val;
@@ -1423,6 +1440,12 @@ static void parse_config(ckpool_t *ckp)
 		if (arr_size)
 			parse_btcds(ckp, arr_val, arr_size);
 	}
+	arr_val = json_object_get(json_conf, "rskd");
+	if (arr_val && json_is_array(arr_val)) {
+		arr_size = json_array_size(arr_val);
+		if (arr_size)
+			parse_rskds(ckp, arr_val, arr_size);
+	}
 	json_get_string(&ckp->btcaddress, json_conf, "btcaddress");
 	json_get_string(&ckp->btcsig, json_conf, "btcsig");
 	if (ckp->btcsig && strlen(ckp->btcsig) > 38) {
@@ -1461,6 +1484,8 @@ static void parse_config(ckpool_t *ckp)
 	arr_val = json_object_get(json_conf, "redirecturl");
 	if (arr_val)
 		parse_redirecturls(ckp, arr_val);
+	json_get_int(&ckp->rskpollperiod, json_conf, "rskpollperiod");
+	json_get_int(&ckp->rsknotifypolicy, json_conf, "rsknotifypolicy");
 
 	json_decref(json_conf);
 }
