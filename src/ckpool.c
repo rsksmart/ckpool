@@ -29,6 +29,7 @@
 #include "ckpool.h"
 #include "libckpool.h"
 #include "generator.h"
+#include "rootstock.h"
 #include "stratifier.h"
 #include "connector.h"
 
@@ -1924,6 +1925,7 @@ int main(int argc, char **argv)
 	sigaction(SIGINT, &handler, NULL);
 
 	/* Launch separate processes from here */
+	prepare_child(&ckp, &ckp.rootstock, rootstock, "rootstock");
 	prepare_child(&ckp, &ckp.generator, generator, "generator");
 	prepare_child(&ckp, &ckp.stratifier, stratifier, "stratifier");
 	prepare_child(&ckp, &ckp.connector, connector, "connector");

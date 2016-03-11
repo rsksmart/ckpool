@@ -29,6 +29,7 @@
 #include "utlist.h"
 #include "connector.h"
 #include "generator.h"
+#include "rootstock.h"
 
 #define MIN1	60
 #define MIN5	300
@@ -136,6 +137,10 @@ struct workbase {
 	char headerbin[112];
 
 	char *logdir;
+
+	/* Rootstock */
+	double rsk_diff;
+	char rsk_blockheader[32];
 
 	ckpool_t *ckp;
 	bool proxy; /* This workbase is proxied work */
@@ -665,6 +670,15 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 		wb->coinb2bin[wb->coinb2len++] = sdata->donkeytxnlen;
 		memcpy(wb->coinb2bin + wb->coinb2len, sdata->donkeytxnbin, sdata->donkeytxnlen);
 		wb->coinb2len += sdata->donkeytxnlen;
+	}
+
+	if (ckp->rdata) {
+		wb->coinb2len += 8;
+		wb->coinb2bin[wb->coinb2len++] = 11 + 32;
+		memcpy(wb->coinb2bin + wb->coinb2len, "\0x6A\x52\x4F\x4F\x54\x53\x54\x4F\x43\x4B\x3A", 11);
+		wb->coinb2len += 11;
+		memcpy(wb->coinb2bin + wb->coinb2len, wb->rsk_blockheader, 32);
+		wb->coinb2len += 32;
 	}
 
 	wb->coinb2len += 4; // Blank lock
@@ -1319,6 +1333,7 @@ static void *do_update(void *arg)
 	int prio = ur->prio, retries = 0;
 	ckpool_t *ckp = ur->ckp;
 	sdata_t *sdata = ckp->sdata;
+	rdata_t *rdata = ckp->rdata;
 	json_t *val, *txn_array;
 	bool new_block = false;
 	bool ret = false;
@@ -1375,6 +1390,10 @@ retry:
 	txn_array = json_object_get(val, "transactions");
 	wb_merkle_bins(ckp, sdata, wb, txn_array);
 	json_decref(val);
+
+	memcpy(wb->rsk_blockheader, rdata->blockhashmerge, 32);
+	wb->rsk_diff = rdata->difficulty;
+
 	generate_coinbase(ckp, wb);
 
 	add_base(ckp, sdata, wb, &new_block);
@@ -5300,6 +5319,8 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	ckmsg_t *block_ckmsg;
 	uchar swap32[32];
 	ts_t ts_now;
+
+	//FIXME: Check rootstock difficulty
 
 	/* Submit anything over 99.9% of the diff in case of rounding errors */
 	if (diff < sdata->current_workbase->network_diff * 0.999)
