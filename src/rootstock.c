@@ -23,7 +23,7 @@ static void send_rootstock(const ckpool_t *ckp, const char *msg)
 
 static const char *rsk_getwork_req = "{\"jsonrpc\": \"2.0\", \"method\": \"eth_getWork\", \"params\": [], \"id\": %d}\n";
 
-bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw, int id)
+bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 {
 	ckpool_t *ckp = cs->ckp;
 	rdata_t *rdata = ckp->rdata;
@@ -34,7 +34,9 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw, int id)
 	const char* blockhashmerge;
 	const char* difficulty;
 	char tmp[32], diff_swap[32];
+	int id;
 
+	id = ++rdata->lastreqid;
 	rpc_req = ckalloc(len);
 	sprintf(rpc_req, rsk_getwork_req, id);
 
@@ -49,14 +51,14 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw, int id)
 		goto out;
 	}
 
-	rdata->last_getwork = time(NULL);
-
 	blockhashmerge = json_string_value(json_object_get(res_val, "blockHashForMergedMining"));
 	difficulty = json_string_value(json_object_get(res_val, "difficultyBI"));
 
-	LOGWARNING("Rootstock: work: '%s', diff: %s", blockhashmerge, difficulty);
+	LOGINFO("Rootstock: work: '%s', diff: %s", blockhashmerge, difficulty);
 
-	hex2bin(rgw->blockhashmerge, blockhashmerge, 32);
+	strcpy(rgw->blockhashmerge, blockhashmerge);
+	
+	hex2bin(rgw->blockhashmergebin, blockhashmerge, 32);
 
 	hex2bin(diff_swap, difficulty, 32);
 	bswap_256(tmp, diff_swap);
@@ -70,16 +72,20 @@ out:
 
 static const char* rsk_processSPVProof_req = "{\"jsonrpc\": \"2.0\", \"method\": \"eth_processSPVProof\", \"params\": [\"%s\"], \"id\": %d}\n";
 
-static bool rsk_processSPVProof(connsock_t *cs, char *params, int id)
+static bool rsk_processSPVProof(connsock_t *cs, char *params)
 {
+	ckpool_t *ckp = cs->ckp;
+	rdata_t *rdata = ckp->rdata;
 	json_t *val, *res_val;
 	int len, retries = 0;
 	const char *res_ret;
 	bool ret = false;
 	char *rpc_req;
+	int id;
 
 	len = 76 + strlen(params) + 16; // len(rsk_processSPVProof_req) + len(params) + len(id)
 retry:
+	id = ++rdata->lastreqid;
 	rpc_req = ckalloc(len);
 	sprintf(rpc_req, rsk_processSPVProof_req, params, id);
 	val = json_rpc_call(cs, rpc_req);
@@ -118,6 +124,27 @@ out:
 	return ret;
 }
 
+static void *rootstock_update(void *arg)
+{
+	ckpool_t *ckp = (ckpool_t *)arg;
+	rdata_t *rdata = ckp->rdata;
+	char *buf = NULL;
+
+	pthread_detach(pthread_self());
+	rename_proc("rootstockupdate");
+
+	while (42) {
+		dealloc(buf);
+		buf = send_recv_proc(ckp->rootstock, "getwork");
+		if (buf && strcmp(buf, rdata->lastblockhashmerge) && !cmdmatch(buf, "failed")) {
+			LOGWARNING("Rootstock: updating");
+			send_proc(ckp->stratifier, "update");
+		} else
+			cksleep_ms(ckp->rskpollperiod);
+	}
+	return NULL;
+}
+
 /* Use a temporary fd when testing server_alive to avoid races on cs->fd */
 static bool server_alive(ckpool_t *ckp, server_instance_t *si, bool pinging)
 {
@@ -152,12 +179,10 @@ static bool server_alive(ckpool_t *ckp, server_instance_t *si, bool pinging)
 		return ret;
 	}
 
-	int id = ++rdata->lastreqid;
-
 	/* Test we can connect, authorise and get a block template */
 	rgw = ckzalloc(sizeof(rsk_getwork_t));
 	si->data = rgw;
-	if (!rsk_getwork(cs, rgw, id)) {
+	if (!rsk_getwork(cs, rgw)) {
 		if (!pinging) {
 			LOGINFO("Failed to get test block template from %s:%s!",
 				cs->url, cs->port);
@@ -282,13 +307,22 @@ retry:
 	buf = umsg->buf;
 	LOGDEBUG("Rootstock received request: %s", buf);
 	if (cmdmatch(buf, "getwork")) {
-		char* hash = bin2hex(rgw->blockhashmerge, 32);
-		send_unix_msg(umsg->sockd, hash);
-		free(hash);
+		if (!rsk_getwork(cs, rgw)) {
+			LOGWARNING("Failed to get work from %s:%s",
+				   cs->url, cs->port);
+			si->alive = false;
+			send_unix_msg(umsg->sockd, "Failed");
+			goto reconnect;
+		} else {
+			memcpy(rdata->blockhashmergebin, rgw->blockhashmergebin, 32);
+			rdata->difficulty = rgw->difficulty;
+			strcpy(rdata->blockhashmerge, rgw->blockhashmerge);
+			send_unix_msg(umsg->sockd, rdata->blockhashmerge);
+		}
 	} else if (cmdmatch(buf, "submitblock")) {
 		bool ret;
 		LOGNOTICE("Submitting rootstock block data!");
-		ret = rsk_processSPVProof(cs, buf + 12 + 64 + 1, ++rdata->lastreqid);
+		ret = rsk_processSPVProof(cs, buf + 12 + 64 + 1);
 	} else if (cmdmatch(buf, "reconnect")) {
 		goto reconnect;
 	} else if (cmdmatch(buf, "loglevel")) {

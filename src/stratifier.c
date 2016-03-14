@@ -140,7 +140,7 @@ struct workbase {
 
 	/* Rootstock */
 	double rsk_diff;
-	char rsk_blockheader[32];
+	char rsk_blockheaderbin[32];
 
 	ckpool_t *ckp;
 	bool proxy; /* This workbase is proxied work */
@@ -672,14 +672,12 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 		wb->coinb2len += sdata->donkeytxnlen;
 	}
 
-	if (ckp->rdata) {
-		wb->coinb2len += 8;
-		wb->coinb2bin[wb->coinb2len++] = 11 + 32;
-		memcpy(wb->coinb2bin + wb->coinb2len, "\0x6A\x52\x4F\x4F\x54\x53\x54\x4F\x43\x4B\x3A", 11);
-		wb->coinb2len += 11;
-		memcpy(wb->coinb2bin + wb->coinb2len, wb->rsk_blockheader, 32);
-		wb->coinb2len += 32;
-	}
+	wb->coinb2len += 8;
+	wb->coinb2bin[wb->coinb2len++] = 11 + 32;
+	memcpy(wb->coinb2bin + wb->coinb2len, "\0x6A\x52\x4F\x4F\x54\x53\x54\x4F\x43\x4B\x3A", 11);
+	wb->coinb2len += 11;
+	memcpy(wb->coinb2bin + wb->coinb2len, wb->rsk_blockheaderbin, 32);
+	wb->coinb2len += 32;
 
 	wb->coinb2len += 4; // Blank lock
 
@@ -1340,6 +1338,7 @@ static void *do_update(void *arg)
 	workbase_t *wb;
 	time_t now_t;
 	char *buf;
+	bool new_rootstock = false;
 
 	pthread_detach(pthread_self());
 	rename_proc("updater");
@@ -1391,8 +1390,12 @@ retry:
 	wb_merkle_bins(ckp, sdata, wb, txn_array);
 	json_decref(val);
 
-	memcpy(wb->rsk_blockheader, rdata->blockhashmerge, 32);
+	memcpy(wb->rsk_blockheaderbin, rdata->blockhashmergebin, 32);
 	wb->rsk_diff = rdata->difficulty;
+	if (strncmp(rdata->blockhashmerge, rdata->lastblockhashmerge, 64)) {
+		new_rootstock = true;
+		strcpy(rdata->lastblockhashmerge, rdata->blockhashmerge);
+	}
 
 	generate_coinbase(ckp, wb);
 
@@ -1400,13 +1403,13 @@ retry:
 	/* Reset the update time to avoid stacked low priority notifies. Bring
 	 * forward the next notify in case of a new block. */
 	now_t = time(NULL);
-	if (new_block)
+	if (new_block || new_rootstock)
 		now_t -= ckp->update_interval / 2;
 	sdata->update_time = now_t;
 
 	if (new_block)
 		LOGNOTICE("Block hash changed to %s", sdata->lastswaphash);
-	stratum_broadcast_update(sdata, wb, new_block);
+	stratum_broadcast_update(sdata, wb, new_block || new_rootstock);
 	ret = true;
 	LOGINFO("Broadcast updated stratum base");
 out:

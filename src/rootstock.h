@@ -16,19 +16,22 @@ struct rootstock_data {
 	/* Id for last request */
 	int lastreqid;
 
-	/* Time we of last getwork */
-	time_t last_getwork;
-
-	/* Last getWork parameters */
-	char blockhashmerge[32];
+	/* Last getwork parameters */
+	char blockhashmergebin[32];
 	double difficulty;
+	char blockhashmerge[68];
+
+	/* Last hash being worked on */
+	char lastblockhashmerge[68];
 };
 
 typedef struct rootstock_data rdata_t;
 
 struct rsk_getwork {
-	char blockhashmerge[32];
+	char blockhashmergebin[32];
 	double difficulty;
+
+	char blockhashmerge[68];
 };
 
 typedef struct rsk_getwork rsk_getwork_t;
