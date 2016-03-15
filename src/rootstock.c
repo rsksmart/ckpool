@@ -13,13 +13,6 @@
 #include "ckpool.h"
 #include "libckpool.h"
 #include "rootstock.h"
-#include "jansson_private.h"
-
-
-static void send_rootstock(const ckpool_t *ckp, const char *msg)
-{
-	send_proc(ckp->rootstock, msg);
-}
 
 static const char *rsk_getwork_req = "{\"jsonrpc\": \"2.0\", \"method\": \"eth_getWork\", \"params\": [], \"id\": %d}\n";
 
@@ -54,10 +47,10 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	blockhashmerge = json_string_value(json_object_get(res_val, "blockHashForMergedMining"));
 	difficulty = json_string_value(json_object_get(res_val, "difficultyBI"));
 
-	LOGINFO("Rootstock: work: '%s', diff: %s", blockhashmerge, difficulty);
+	LOGWARNING("Rootstock: work: '%s', diff: %s", blockhashmerge, difficulty);
 
 	strcpy(rgw->blockhashmerge, blockhashmerge);
-	
+
 	hex2bin(rgw->blockhashmergebin, blockhashmerge, 32);
 
 	hex2bin(diff_swap, difficulty, 32);
@@ -369,6 +362,7 @@ static void *server_watchdog(void *arg)
 static void setup_servers(ckpool_t *ckp)
 {
 	pthread_t pth_watchdog;
+	pthread_t pth_rskupdate;
 	int i;
 
 	ckp->rskdservers = ckalloc(sizeof(server_instance_t *) * ckp->rskds);
@@ -389,6 +383,7 @@ static void setup_servers(ckpool_t *ckp)
 	}
 
 	create_pthread(&pth_watchdog, server_watchdog, ckp);
+	create_pthread(&pth_rskupdate, rootstock_update, ckp);
 }
 
 static void server_mode(ckpool_t *ckp, proc_instance_t *pi)

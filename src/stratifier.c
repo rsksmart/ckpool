@@ -1721,7 +1721,8 @@ static void downstream_blocksubmits(ckpool_t *ckp, const char *gbt_block, const 
 
 static void
 process_block(ckpool_t *ckp, const workbase_t *wb, const char *coinbase, const int cblen,
-	      const uchar *data, const uchar *hash, uchar *swap32, char *blockhash)
+	      const uchar *data, const uchar *hash, uchar *swap32, char *blockhash, 
+	      bool submit_bitcoind, bool submit_rskd)
 {
 	int txns = wb->txns + 1;
 	char *gbt_block, varint[12];
@@ -1754,6 +1755,10 @@ process_block(ckpool_t *ckp, const workbase_t *wb, const char *coinbase, const i
 	strcat(gbt_block, hexcoinbase);
 	if (wb->txns)
 		realloc_strcat(&gbt_block, wb->txn_data);
+	if (submit_rskd)
+		send_proc(ckp->rootstock, gbt_block);
+	if (!submit_bitcoind)
+		return;
 	send_generator(ckp, gbt_block, GEN_PRIORITY);
 	if (ckp->remote)
 		upstream_blocksubmit(ckp, gbt_block);
@@ -1818,7 +1823,7 @@ static void submit_node_block(ckpool_t *ckp, sdata_t *sdata, json_t *val)
 
 	/* Fill in the hashes */
 	share_diff(coinbase, enonce1bin, wb, nonce2, ntime32, nonce, hash, swap, &cblen);
-	process_block(ckp, wb, coinbase, cblen, swap, hash, swap32, blockhash);
+	process_block(ckp, wb, coinbase, cblen, swap, hash, swap32, blockhash, true, false);
 
 	JSON_CPACK(bval, "{si,ss,ss,sI,ss,ss,ss,sI,sf,ss,ss,ss,ss}",
 			 "height", wb->height,
@@ -5322,11 +5327,16 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	ckmsg_t *block_ckmsg;
 	uchar swap32[32];
 	ts_t ts_now;
+	bool submit_bitcoind = false;
+	bool submit_rskd = false;
 
-	//FIXME: Check rootstock difficulty
+	/* Rootstock difficulty */
+	submit_rskd = !(diff < sdata->current_workbase->rsk_diff * 0.999);
 
 	/* Submit anything over 99.9% of the diff in case of rounding errors */
-	if (diff < sdata->current_workbase->network_diff * 0.999)
+	submit_bitcoind = !(diff < sdata->current_workbase->network_diff * 0.999);
+
+	if (!submit_bitcoind && !submit_rskd)
 		return;
 
 	LOGWARNING("Possible block solve diff %f !", diff);
@@ -5337,7 +5347,10 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	ts_realtime(&ts_now);
 	sprintf(cdfield, "%lu,%lu", ts_now.tv_sec, ts_now.tv_nsec);
 
-	process_block(ckp, wb, coinbase, cblen, data, hash, swap32, blockhash);
+	process_block(ckp, wb, coinbase, cblen, data, hash, swap32, blockhash, submit_bitcoind, submit_rskd);
+
+	if (!submit_bitcoind)
+		return;
 
 	send_node_block(sdata, client->enonce1, nonce, nonce2, ntime32, wb->id,
 			diff, client->id);

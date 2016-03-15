@@ -1812,6 +1812,8 @@ int main(int argc, char **argv)
 		quit(0, "No proxy entries found in config file %s", ckp.config);
 	if (ckp.redirector && !ckp.redirecturls)
 		quit(0, "No redirect entries found in config file %s", ckp.config);
+	if (!ckp.rskpollperiod)
+		ckp.rskpollperiod = ckp.blockpoll;
 
 	/* Create the log directory */
 	trail_slash(&ckp.logdir);
@@ -1925,8 +1927,8 @@ int main(int argc, char **argv)
 	sigaction(SIGINT, &handler, NULL);
 
 	/* Launch separate processes from here */
-	prepare_child(&ckp, &ckp.rootstock, rootstock, "rootstock");
 	prepare_child(&ckp, &ckp.generator, generator, "generator");
+	prepare_child(&ckp, &ckp.rootstock, rootstock, "rootstock");
 	prepare_child(&ckp, &ckp.stratifier, stratifier, "stratifier");
 	prepare_child(&ckp, &ckp.connector, connector, "connector");
 
