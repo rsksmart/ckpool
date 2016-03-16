@@ -580,6 +580,7 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 	char header[228];
 	int len, ofs = 0;
 	ts_t now;
+	int txs;
 
 	/* Set fixed length coinb1 arrays to be more than enough */
 	wb->coinb1 = ckzalloc(256);
@@ -650,9 +651,13 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 	if (ckp->donvalid) {
 		d64 = g64 / 200; // 0.5% donation
 		g64 -= d64; // To guarantee integers add up to the original coinbasevalue
-		wb->coinb2bin[wb->coinb2len++] = 2; // 2 transactions
+		txs = 2;
 	} else
-		wb->coinb2bin[wb->coinb2len++] = 1; // 2 transactions
+		txs = 1;
+	if (ckp->rskds)
+		++txs;
+
+	wb->coinb2bin[wb->coinb2len++] = txs;
 
 	u64 = (uint64_t *)&wb->coinb2bin[wb->coinb2len];
 	*u64 = htole64(g64);
@@ -672,12 +677,14 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 		wb->coinb2len += sdata->donkeytxnlen;
 	}
 
-	wb->coinb2len += 8;
-	wb->coinb2bin[wb->coinb2len++] = 11 + 32;
-	memcpy(wb->coinb2bin + wb->coinb2len, "\0x6A\x52\x4F\x4F\x54\x53\x54\x4F\x43\x4B\x3A", 11);
-	wb->coinb2len += 11;
-	memcpy(wb->coinb2bin + wb->coinb2len, wb->rsk_blockheaderbin, 32);
-	wb->coinb2len += 32;
+	if (ckp->rskds) {
+		wb->coinb2len += 8;
+		wb->coinb2bin[wb->coinb2len++] = 11 + 32;
+		memcpy(wb->coinb2bin + wb->coinb2len, "\0x6A\x52\x4F\x4F\x54\x53\x54\x4F\x43\x4B\x3A", 11);
+		wb->coinb2len += 11;
+		memcpy(wb->coinb2bin + wb->coinb2len, wb->rsk_blockheaderbin, 32);
+		wb->coinb2len += 32;
+	}
 
 	wb->coinb2len += 4; // Blank lock
 
@@ -1390,13 +1397,14 @@ retry:
 	wb_merkle_bins(ckp, sdata, wb, txn_array);
 	json_decref(val);
 
-	memcpy(wb->rsk_blockheaderbin, rdata->blockhashmergebin, 32);
-	wb->rsk_diff = rdata->difficulty;
-	if (strncmp(rdata->blockhashmerge, rdata->lastblockhashmerge, 64)) {
-		new_rootstock = true;
-		strcpy(rdata->lastblockhashmerge, rdata->blockhashmerge);
+	if (ckp->rskds) {
+		memcpy(wb->rsk_blockheaderbin, rdata->blockhashmergebin, 32);
+		wb->rsk_diff = rdata->difficulty;
+		if (strncmp(rdata->blockhashmerge, rdata->lastblockhashmerge, 64)) {
+			new_rootstock = true;
+			strcpy(rdata->lastblockhashmerge, rdata->blockhashmerge);
+		}
 	}
-
 	generate_coinbase(ckp, wb);
 
 	add_base(ckp, sdata, wb, &new_block);
@@ -1755,7 +1763,7 @@ process_block(ckpool_t *ckp, const workbase_t *wb, const char *coinbase, const i
 	strcat(gbt_block, hexcoinbase);
 	if (wb->txns)
 		realloc_strcat(&gbt_block, wb->txn_data);
-	if (submit_rskd)
+	if (ckp->rskds && submit_rskd)
 		send_proc(ckp->rootstock, gbt_block);
 	if (!submit_bitcoind)
 		return;

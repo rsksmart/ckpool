@@ -1928,7 +1928,8 @@ int main(int argc, char **argv)
 
 	/* Launch separate processes from here */
 	prepare_child(&ckp, &ckp.generator, generator, "generator");
-	prepare_child(&ckp, &ckp.rootstock, rootstock, "rootstock");
+	if (ckp.rskds)
+		prepare_child(&ckp, &ckp.rootstock, rootstock, "rootstock");
 	prepare_child(&ckp, &ckp.stratifier, stratifier, "stratifier");
 	prepare_child(&ckp, &ckp.connector, connector, "connector");
 

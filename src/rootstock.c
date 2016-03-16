@@ -47,14 +47,14 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	blockhashmerge = json_string_value(json_object_get(res_val, "blockHashForMergedMining"));
 	difficulty = json_string_value(json_object_get(res_val, "difficultyBI"));
 
-	LOGWARNING("Rootstock: work: '%s', diff: %s", blockhashmerge, difficulty);
+	//LOGINFO("Rootstock: work: '%s', diff: %s", blockhashmerge, difficulty);
 
 	strcpy(rgw->blockhashmerge, blockhashmerge);
 
 	hex2bin(rgw->blockhashmergebin, blockhashmerge, 32);
 
-	hex2bin(diff_swap, difficulty, 32);
-	bswap_256(tmp, diff_swap);
+	hex2bin(tmp, difficulty, 32);
+	//bswap_256(tmp, diff_swap);
 	rgw->difficulty = diff_from_target((uchar *)tmp);
 
 	ret = true;
@@ -130,10 +130,9 @@ static void *rootstock_update(void *arg)
 		dealloc(buf);
 		buf = send_recv_proc(ckp->rootstock, "getwork");
 		if (buf && strcmp(buf, rdata->lastblockhashmerge) && !cmdmatch(buf, "failed")) {
-			LOGWARNING("Rootstock: updating");
 			send_proc(ckp->stratifier, "update");
-		} else
-			cksleep_ms(ckp->rskpollperiod);
+		}
+		cksleep_ms(ckp->rskpollperiod);
 	}
 	return NULL;
 }
@@ -312,9 +311,9 @@ retry:
 			strcpy(rdata->blockhashmerge, rgw->blockhashmerge);
 			send_unix_msg(umsg->sockd, rdata->blockhashmerge);
 		}
-	} else if (cmdmatch(buf, "submitblock")) {
+	} else if (cmdmatch(buf, "submitblock:")) {
 		bool ret;
-		LOGNOTICE("Submitting rootstock block data!");
+		LOGINFO("Submitting rootstock block data!");
 		ret = rsk_processSPVProof(cs, buf + 12 + 64 + 1);
 	} else if (cmdmatch(buf, "reconnect")) {
 		goto reconnect;
