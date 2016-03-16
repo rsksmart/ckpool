@@ -680,7 +680,7 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 	if (ckp->rskds) {
 		wb->coinb2len += 8;
 		wb->coinb2bin[wb->coinb2len++] = 11 + 32;
-		memcpy(wb->coinb2bin + wb->coinb2len, "\0x6A\x52\x4F\x4F\x54\x53\x54\x4F\x43\x4B\x3A", 11);
+		memcpy(wb->coinb2bin + wb->coinb2len, "\x6A\x52\x4F\x4F\x54\x53\x54\x4F\x43\x4B\x3A", 11);
 		wb->coinb2len += 11;
 		memcpy(wb->coinb2bin + wb->coinb2len, wb->rsk_blockheaderbin, 32);
 		wb->coinb2len += 32;
