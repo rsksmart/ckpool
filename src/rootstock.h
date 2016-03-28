@@ -30,6 +30,8 @@ typedef struct rootstock_data rdata_t;
 struct rsk_getwork {
 	char blockhashmergebin[32];
 	double difficulty;
+	double minerfees;
+	int notify;
 
 	char blockhashmerge[68];
 };

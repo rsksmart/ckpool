@@ -14,6 +14,42 @@
 #include "libckpool.h"
 #include "rootstock.h"
 
+
+static unsigned int b64val(char c) {
+	if (c >= 'A' && c <= 'Z') {
+		return c - 'A';
+	} else if (c >= 'a' && c <= 'z') {
+		return c - 'a' + 26;
+	} else if (c >= '0' && c <= '9') {
+		return c - '0' + 52;
+	} else if (c == '+') {
+		return 62;
+	} else if (c == '/') {
+		return 63;
+	}
+	return 0;
+}
+
+size_t b642bin(char* dest, const char* src, size_t size)
+{
+	size_t res = 0;
+	size_t len = strlen(src);
+	while (len >= 4) {
+		unsigned int src0 = b64val(src[0]);
+		unsigned int src1 = b64val(src[1]);
+		unsigned int src2 = b64val(src[2]);
+		unsigned int src3 = b64val(src[3]);
+		dest[0] = (src0 << 2) | (src1 >> 4) & 0x03;
+		dest[1] = ((src1 & 0x0F) << 4) | ((src2 >> 2) & 0x0F);
+		dest[2] = ((src2 & 0x03) << 6) | src3;
+		src += 4;
+		dest += 3;
+		len -= 4;
+		res += 3;
+	}
+	return res;
+}
+
 static const char *rsk_getwork_req = "{\"jsonrpc\": \"2.0\", \"method\": \"eth_getWork\", \"params\": [], \"id\": %d}\n";
 
 bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
@@ -25,8 +61,11 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	char *rpc_req;
 	size_t len = 67 + 16; // strlen(rsk_getwork_req) + len(id)
 	const char* blockhashmerge;
-	const char* difficulty;
-	char tmp[32], diff_swap[32];
+	double difficulty = 0.0;
+	const char* strdifficulty;
+	double minerfees = 0.0;
+	const char* strminerfees;
+	int notify = 0;
 	int id;
 
 	id = ++rdata->lastreqid;
@@ -45,17 +84,31 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	}
 
 	blockhashmerge = json_string_value(json_object_get(res_val, "blockHashForMergedMining"));
-	difficulty = json_string_value(json_object_get(res_val, "difficultyBI"));
+	strdifficulty = json_string_value(json_object_get(res_val, "difficultyBI"));
+	strminerfees = json_string_value(json_object_get(res_val, "feesPaidToMiner"));
+	difficulty = atof(strdifficulty);
+	minerfees = atof(strminerfees);
+	notify = json_integer_value(json_object_get(res_val, "notifyFlag"));
 
-	//LOGINFO("Rootstock: work: '%s', diff: %s", blockhashmerge, difficulty);
-
+	
+	{
+		char* res = json_dumps(res_val, JSON_EOL | JSON_COMPACT);
+		LOGINFO("Rootstock: getwork: '%s'", res);
+		free(res);
+	}
+	
 	strcpy(rgw->blockhashmerge, blockhashmerge);
 
-	hex2bin(rgw->blockhashmergebin, blockhashmerge, 32);
+	b642bin(rgw->blockhashmergebin, blockhashmerge, 32);
 
-	hex2bin(tmp, difficulty, 32);
-	//bswap_256(tmp, diff_swap);
-	rgw->difficulty = diff_from_target((uchar *)tmp);
+	rgw->difficulty = difficulty;
+	rgw->minerfees = minerfees;
+	rgw->notify = notify;
+
+	{
+		char* hash = bin2hex(rgw->blockhashmergebin, 32);
+		LOGINFO("Rootstock: getwork: hash: %s, difficulty: %f, minerfees: %f, notify: %d", hash, difficulty, minerfees, notify);
+	}
 
 	ret = true;
 out:
