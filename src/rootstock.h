@@ -19,6 +19,8 @@ struct rootstock_data {
 	/* Last getwork parameters */
 	char blockhashmergebin[32];
 	double difficulty;
+	double minerfees;
+	int notify;
 	char blockhashmerge[68];
 
 	/* Last hash being worked on */

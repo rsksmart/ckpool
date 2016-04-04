@@ -1401,8 +1401,10 @@ retry:
 		memcpy(wb->rsk_blockheaderbin, rdata->blockhashmergebin, 32);
 		wb->rsk_diff = rdata->difficulty;
 		if (strncmp(rdata->blockhashmerge, rdata->lastblockhashmerge, 64)) {
-			new_rootstock = true;
 			strcpy(rdata->lastblockhashmerge, rdata->blockhashmerge);
+			if ((ckp->rsknotifypolicy == 1 && rdata->notify) || ckp->rsknotifypolicy == 2) {
+				new_rootstock = true;
+			}
 		}
 	}
 	generate_coinbase(ckp, wb);

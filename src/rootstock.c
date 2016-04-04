@@ -61,6 +61,7 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	char *rpc_req;
 	size_t len = 67 + 16; // strlen(rsk_getwork_req) + len(id)
 	const char* blockhashmerge;
+	char blockhashmergebin[33];
 	double difficulty = 0.0;
 	const char* strdifficulty;
 	double minerfees = 0.0;
@@ -99,7 +100,8 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	
 	strcpy(rgw->blockhashmerge, blockhashmerge);
 
-	b642bin(rgw->blockhashmergebin, blockhashmerge, 32);
+	b642bin(blockhashmergebin, blockhashmerge, 32);
+	memcpy(rgw->blockhashmergebin, blockhashmergebin, 32);
 
 	rgw->difficulty = difficulty;
 	rgw->minerfees = minerfees;
@@ -183,7 +185,10 @@ static void *rootstock_update(void *arg)
 		dealloc(buf);
 		buf = send_recv_proc(ckp->rootstock, "getwork");
 		if (buf && strcmp(buf, rdata->lastblockhashmerge) && !cmdmatch(buf, "failed")) {
-			send_proc(ckp->stratifier, "update");
+			if (ckp->rsknotifypolicy == 1 && rdata->notify || ckp->rsknotifypolicy == 2) {
+				LOGWARNING("Rootstock: update %s", buf);
+				send_proc(ckp->stratifier, "update");
+			}
 		}
 		cksleep_ms(ckp->rskpollperiod);
 	}
@@ -350,17 +355,19 @@ retry:
 	}
 
 	buf = umsg->buf;
-	LOGDEBUG("Rootstock received request: %s", buf);
+	LOGDEBUG("Rootstock: command: %s", buf);
 	if (cmdmatch(buf, "getwork")) {
 		if (!rsk_getwork(cs, rgw)) {
 			LOGWARNING("Failed to get work from %s:%s",
 				   cs->url, cs->port);
 			si->alive = false;
-			send_unix_msg(umsg->sockd, "Failed");
+			send_unix_msg(umsg->sockd, "failed");
 			goto reconnect;
 		} else {
 			memcpy(rdata->blockhashmergebin, rgw->blockhashmergebin, 32);
 			rdata->difficulty = rgw->difficulty;
+			rdata->minerfees = rgw->minerfees;
+			rdata->notify = rgw->notify;
 			strcpy(rdata->blockhashmerge, rgw->blockhashmerge);
 			send_unix_msg(umsg->sockd, rdata->blockhashmerge);
 		}
