@@ -91,13 +91,6 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	minerfees = atof(strminerfees);
 	notify = json_integer_value(json_object_get(res_val, "notifyFlag"));
 
-	
-	{
-		char* res = json_dumps(res_val, JSON_EOL | JSON_COMPACT);
-		LOGINFO("Rootstock: getwork: '%s'", res);
-		free(res);
-	}
-	
 	strcpy(rgw->blockhashmerge, blockhashmerge);
 
 	b642bin(blockhashmergebin, blockhashmerge, 32);
@@ -106,11 +99,6 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	rgw->difficulty = difficulty;
 	rgw->minerfees = minerfees;
 	rgw->notify = notify;
-
-	{
-		char* hash = bin2hex(rgw->blockhashmergebin, 32);
-		LOGINFO("Rootstock: getwork: hash: %s, difficulty: %f, minerfees: %f, notify: %d", hash, difficulty, minerfees, notify);
-	}
 
 	ret = true;
 out:
@@ -355,7 +343,6 @@ retry:
 	}
 
 	buf = umsg->buf;
-	LOGDEBUG("Rootstock: command: %s", buf);
 	if (cmdmatch(buf, "getwork")) {
 		if (!rsk_getwork(cs, rgw)) {
 			LOGWARNING("Failed to get work from %s:%s",

@@ -500,6 +500,8 @@ reparse:
 		return false;
 	}
 
+	LOGINFO("ROOTSTOCK: parse_client_msg: %s", client->buf);
+
 	if (!(val = json_loads(client->buf, JSON_DISABLE_EOF_CHECK, NULL))) {
 		char *buf = strdup("Invalid JSON, disconnecting\n");
 
@@ -711,6 +713,8 @@ static bool send_sender_send(ckpool_t *ckp, cdata_t *cdata, sender_send_t *sende
 	if (unlikely(!ckp->wmem_warn && sender_send->len > client->sendbufsize))
 		client->sendbufsize = set_sendbufsize(ckp, client->fd, sender_send->len);
 
+	LOGINFO("ROOTSTOCK: send_client_send: %"PRId64", %p, %s", client->id, sender_send, sender_send->buf + sender_send->ofs);
+
 	while (sender_send->len) {
 		int ret = write(client->fd, sender_send->buf + sender_send->ofs, sender_send->len);
 
@@ -737,6 +741,9 @@ static bool send_sender_send(ckpool_t *ckp, cdata_t *cdata, sender_send_t *sende
 		client->blocked_time = 0;
 	}
 out_true:
+
+	LOGINFO("ROOTSTOCK: send_client_complete %"PRId64", %p", client->id, sender_send);
+
 	client->sending = NULL;
 	return true;
 }
