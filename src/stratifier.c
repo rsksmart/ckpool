@@ -1397,9 +1397,14 @@ retry:
 	wb_merkle_bins(ckp, sdata, wb, txn_array);
 	json_decref(val);
 
+	char hash_swap[32], tmp[32];
+	hex2bin(hash_swap, &(rdata->target[0]), 32);
+	bswap_256(tmp, hash_swap);
+	double rsk_diff = diff_from_target((uchar *)tmp);
+
 	if (ckp->rskds) {
 		memcpy(wb->rsk_blockheaderbin, rdata->blockhashmergebin, 32);
-		wb->rsk_diff = rdata->difficulty;
+		wb->rsk_diff = rsk_diff;
 		if (strncmp(rdata->blockhashmerge, rdata->lastblockhashmerge, 64)) {
 			strcpy(rdata->lastblockhashmerge, rdata->blockhashmerge);
 			if ((ckp->rsknotifypolicy == 1 && rdata->notify) || ckp->rsknotifypolicy == 2) {
