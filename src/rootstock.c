@@ -85,6 +85,9 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 
 	blockhashmerge = json_string_value(json_object_get(res_val, "blockHashForMergedMining"));
 	target = json_string_value(json_object_get(res_val, "target"));
+
+	//printf("ROOTSTOCK:GET_WORK -- TARGET FROM RSK:  %s\n", target);
+
 	strminerfees = json_string_value(json_object_get(res_val, "feesPaidToMiner"));
 	minerfees = atof(strminerfees);
 	notify = json_integer_value(json_object_get(res_val, "notifyFlag"));
@@ -95,6 +98,9 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	memcpy(rgw->blockhashmergebin, blockhashmergebin, 32);
 
 	strcpy(rgw->target, target);
+
+	//printf("ROOTSTOCK:GET_WORK -- TARGET FROM RGW:  %s\n", rgw->target);
+
 	rgw->minerfees = minerfees;
 	rgw->notify = notify;
 
@@ -322,6 +328,9 @@ reconnect:
 	}
 
 	rgw = si->data;
+
+	//printf("ROOTSTOCK:RSK_LOOP -- TARGET FROM RGW 1: %s\n", rgw->target);
+
 	cs = &si->cs;
 	if (!old_si)
 		LOGWARNING("Connected to rskd: %s:%s", cs->url, cs->port);
@@ -350,7 +359,13 @@ retry:
 			goto reconnect;
 		} else {
 			memcpy(rdata->blockhashmergebin, rgw->blockhashmergebin, 32);
+
+			//printf("ROOTSTOCK:RSK_LOOP -- TARGET FROM RGW 2: %s\n", rgw->target);
+
 			strcpy(rdata->target, rgw->target);
+
+			//printf("ROOTSTOCK:RSK_LOOP -- TARGET FROM RDATA: %s\n", rdata->target);
+
 			rdata->minerfees = rgw->minerfees;
 			rdata->notify = rgw->notify;
 			strcpy(rdata->blockhashmerge, rgw->blockhashmerge);
