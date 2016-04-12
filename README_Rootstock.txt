@@ -242,3 +242,116 @@ For example it can be used with this miner https://bitcointalk.org/index.php?top
 "url" : addres of ckpool
 "userpass" : The user:pass will be ignored by ckpool in standalone mode.
 
+
+
+
+
+
+
+Parsing ckpool logs
+===================
+
+Prerequisites
+-------------
+
+Install parse ( https://pypi.python.org/pypi/parse )
+
+> pip install parse
+
+
+Execution
+---------
+
+Calling it without arguments will display a usage text
+
+> ./logparser.py
+
+usage: logparser.py [-h] [-o OUTPUT] [-s] logFile                  
+logparser.py: error: the following arguments are required: logFile 
+
+With -o OUTPUT will extract the logged actions from the log file and will
+write it to in CSV format to the file specified.
+
+> ./logparser.py logs/ckpool.log -o actions.csv
+
+The fields logged are: action name, start time, duration, id
+
+> ./logparser.py logs/ckpool.log -s
+
+With the -s flag will display a summary of the high level operations
+
+The fields logged are: action name, start time, duration, jobid, clients, notification duration
+
+
+Output example
+--------------
+
+An example of the output file is the following
+
+mining.submit, 2016-04-12 13:40:33.718000, 0.0, 570d22f50000000f:1aeb3906
+mining.submit, 2016-04-12 13:40:34.776000, 0.0, 570d22f50000000f:f1bd6587
+mining.submit, 2016-04-12 13:40:36.208000, 0.0, 570d22f50000000f:10d23b88
+blocksolve, 2016-04-12 13:40:36.209000, 0.0, 570d22f50000000f:10d23b88:98853eac43b833be80da52df1dfd1cb7b26f76bbe0d3b7e20779f19300000000
+mining.submit, 2016-04-12 13:40:36.913000, 0.0, 570d22f50000000f:ba85a588
+submitblock, 2016-04-12 13:40:36.209000, 1155.0, 98853eac43b833be80da52df1dfd1cb7b26f76bbe0d3b7e20779f19300000000
+getblocktemplate, 2016-04-12 13:40:37.365000, 1003.0, 570d22f500000010
+mining.notify, 2016-04-12 13:40:38.368000, 0.0, 570d22f500000010
+mining.submit, 2016-04-12 13:40:39.338000, 0.0, 570d22f500000010:e7889180
+
+
+Example of summary generated
+----------------------------
+
+getblocktemplate, 2016-04-12 13:38:34.106000, 1002.0, 570d22f50000000c, 1, 1.0
+getblocktemplate, 2016-04-12 13:39:09.108000, 1005.0, 570d22f50000000d, 1, 1.0
+getblocktemplate, 2016-04-12 13:39:44.113000, 1136.0, 570d22f50000000e, 1, 1.0
+submitblock, 2016-04-12 13:40:36.208000, 1155.0, 570d22f50000000f, 1, 1.0
+getblocktemplate, 2016-04-12 13:40:19.116000, 1009.0, 570d22f50000000f, 1, 1.0
+getblocktemplate, 2016-04-12 13:40:37.365000, 1003.0, 570d22f500000010, 1, 0.0
+submitblock, 2016-04-12 13:41:11.451000, 1012.0, 570d22f500000011, 1, 1.0
+getblocktemplate, 2016-04-12 13:40:57.368000, 1046.0, 570d22f500000011, 1, 0.0
+getblocktemplate, 2016-04-12 13:41:12.464000, 1006.0, 570d22f500000012, 1, 0.0
+getblocktemplate, 2016-04-12 13:41:32.467000, 1007.0, 570d22f500000013, 1, 0.0
+
+
+
+Analysis
+--------
+
+For now there are two operations being logged: getblocktemplate and submitblock.
+
+* getblocktemplate
+
+We interpret the following line:
+
+getblocktemplate, 2016-04-12 13:38:34.106000, 1002.0, 570d22f50000000c, 1, 1.0
+
+action: getblocktemplate
+start: 2016-04-12 13:38:34.106000
+	The time that the getblocktemplate call was send to bitcoind
+duration: 1002.0
+	The duration in miliseconds of the getblocktemplate
+jobid: 570d22f50000000c
+	The jobid assigned by ckpool
+clients: 1
+	The numbers of clients who received the mining.notify for the jobid
+elapsed: 1.0
+	The time elapsed until the last notification, in miliseconds
+
+* submitblock
+
+This line can be interpreted as
+
+submitblock, 2016-04-12 13:40:36.208000, , 570d22f50000000f, 1, 1.0
+
+action: submitblock
+start: 2016-04-12 13:40:36.208000
+	The time the mining.submit was received by bitcoind
+duration: 1.0
+	The time elapsed until the block is sent to bitcoind, in miliseconds
+jobid: 570d22f50000000f
+	The jobid being submitted
+clients: 1
+	This is always 1 for submitblock
+elapsed: 1155.0
+	The duration in miliseconds of the submitblock call to bitcoind
