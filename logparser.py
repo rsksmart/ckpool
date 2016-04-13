@@ -20,9 +20,11 @@ class LogFile:
         self.filename = filename
         self.output = open(output, "w+") if output else None
         self.summary = summary
-        self.operations = {}
         self.last_getblocktemplate = None
-        self.jobs = {}
+        self.server_calls = {}      # calls to bitcoind / rskd
+        self.client_calls = {}      # calls to clients
+        self.client_jobs = {}       # jobs received from clients
+        self.submit_jobs = {}       # jobs sent to bitcoind
 
     def parse(self):
         """Parse log file"""
@@ -38,7 +40,7 @@ class LogFile:
                     prevline = line
             if prevline:
                 self.parseline(prevline)
-            #self.flushlines()
+            self.flush_info()
 
     def parseline(self, line):
         if line.find("ROOTSTOCK:") < 0: # Ignore lines that were not logged by us
@@ -65,7 +67,7 @@ class LogFile:
             call_id = rpc_call.fixed[0]
             call = rpc_call.fixed[1]
 
-            return self.process('json_rpc_call', call_id, time, call)
+            return self.process_operation('json_rpc_call', call_id, time, call)
 
         elif operation == 'json_rpc_reply':
             rpc_reply = parse.parse("{:x}, {}", data)
@@ -75,7 +77,7 @@ class LogFile:
             call_id = rpc_reply.fixed[0]
             reply = rpc_reply.fixed[1]
 
-            return self.process('json_rpc_reply', call_id, time, reply)
+            return self.process_operation('json_rpc_reply', call_id, time, reply)
 
         elif operation == "send_client_send":
             send_client = parse.parse("{:d}, {:x}, {}", data)
@@ -83,27 +85,27 @@ class LogFile:
             send_id = send_client.fixed[1]
             send = send_client.fixed[2]
 
-            return self.process('send_client_send', send_id, time, send, client_id)
+            return self.process_operation('send_client_send', send_id, time, send, client_id)
 
         elif operation == "send_client_complete":
             send_client = parse.parse("{:d}, {:x}", data)
             client_id = send_client.fixed[0]
             send_id = send_client.fixed[1]
 
-            return self.process('send_client_complete', send_id, time, '', client_id)
+            return self.process_operation('send_client_complete', send_id, time, '', client_id)
 
         elif operation == "parse_client_msg":
             client_message = parse.parse("{:d}, {}", data)
             client_id = client_message.fixed[0]
             message = client_message.fixed[1]
-            return self.process('parse_client_msg', client_id, time, message)
+            return self.process_operation('parse_client_msg', client_id, time, message)
 
         elif operation == "getblocktemplate":
             message = parse.parse("{:ti}, {:ti}, {}", data)
             start_time = message.fixed[0]
             finish_time = message.fixed[1]
             work_id = message.fixed[2]
-            return self.process('getblocktemplate', work_id, start_time, '', finish_time)
+            return self.process_operation('getblocktemplate', work_id, start_time, '', finish_time)
 
         elif operation == "blocksolve":
             message = parse.parse("{}, {}, {}, {}", data)
@@ -111,7 +113,7 @@ class LogFile:
             nonce = message.fixed[1]
             nonce2 = message.fixed[2]
             blockhash = message.fixed[3]
-            return self.process('blocksolve', jobid, time, (jobid, nonce, nonce2, blockhash))
+            return self.process_operation('blocksolve', jobid, time, (jobid, nonce, nonce2, blockhash))
 
         elif operation == "submitblock":
             message = parse.parse("{:ti}, {:ti}, {}:{}", data)
@@ -119,89 +121,111 @@ class LogFile:
             finish_time = message.fixed[1]
             result = message.fixed[2]
             blockhash = message.fixed[3]
-            return self.process('submitblock', blockhash, start_time, result, finish_time)
+            return self.process_operation('submitblock', blockhash, start_time, result, finish_time)
 
         print("Failed to parse: |{}|".format(line))
         return None
 
     # Process individual operations and map them to a high livel operation
-    def process(self, operation, id, time, data, *args):
+    def process_operation(self, operation, id, time, data, *args):
         if operation == 'json_rpc_call':
             # Before json-rpc call
             method = self.jsonrpc_method(data)
-            self.operations[id] = (method, time, data)
+            self.server_calls[id] = (method, time, data)
 
         elif operation == 'json_rpc_reply':
             # After a successful json-rpc call
-            if id in self.operations:
-                method, start_time, call = self.operations[id]
+            if id in self.server_calls:
+                #method, start_time, call = self.operations[id]
 
-                if method in ['submitblock']:
-                    pass
-                    # self.format(method, start_time, delta_ms(start_time, time))
+                #if method in ['submitblock']:
+                #    pass
+                #    # self.format(method, start_time, delta_ms(start_time, time))
 
-                del self.operations[id]
+                del self.server_calls[id]
             else:
-                print("Error json_rpc_reply without json_rpc_call {} at {}".format(data, time))
+                print("Error json_rpc_reply {} without json_rpc_call {} at {}".format(id, data, time))
 
         elif operation == 'send_client_send':
             # Before sending a message to a miner
             method = self.jsonrpc_method(data)
-            self.operations[id] = (method, time, data)
+            self.client_calls[id] = (method, time, data)
 
         elif operation == 'send_client_complete':
             # After the message was sent to a miner
-            if id in self.operations:
+            if id in self.client_calls:
                 client_id = args[0]
-                method, start_time, call = self.operations[id]
+                method, start_time, call = self.client_calls[id]
 
                 if method == 'mining.notify':
-                    jobid = self.notify_jobid(self.operations[id][2])
-                    self.format(method, start_time, delta_ms(start_time, time), ":".join([jobid, str(client_id)]))
+                    jobid = self.notify_jobid(self.client_calls[id][2])
+                    self.log_action('mining.notify', start_time, delta_ms(start_time, time), ":".join([jobid, str(client_id)]))
 
-                del self.operations[id]
+                del self.client_calls[id]
             else:
-                print("Error send_client_complete without send_client_send {} at {}".format(data, time))
+                print("Error send_client_complete {} without send_client_send {} at {}".format(id, data, time))
 
         elif operation == 'parse_client_msg':
             # Message received from a miner
             method = self.jsonrpc_method(data)
             if method == 'mining.submit':
                 jobid, nonce = self.submit_jobid(data)
-                self.jobs[nonce] = (jobid, time, nonce)
-                self.format(method, time, 0.0, ":".join([jobid,nonce]))
+                self.client_jobs.setdefault(jobid, {})[nonce] = (jobid, nonce, time)
+                self.log_action(method, time, 0.0, ":".join([jobid, nonce]))
 
         elif operation == 'getblocktemplate':
             finish_time = args[0]
-            self.format('getblocktemplate', time, delta_ms(time, finish_time), id)
+            self.log_action('getblocktemplate', time, delta_ms(time, finish_time), id)
 
         elif operation == 'blocksolve':
             jobid, nonce, nonce2, blockhash = data
-            if nonce in self.jobs:
-                sub_jobid, sub_time, sub_nonce = self.jobs[nonce]
+            if jobid in self.client_jobs and nonce in self.client_jobs[jobid]:
+                sub_jobid, sub_nonce, sub_time = self.client_jobs[jobid][nonce]
                 if jobid == sub_jobid:
-                    del self.jobs[nonce]
-                    self.jobs[blockhash] = (sub_jobid, sub_time, sub_nonce, blockhash)
-                    self.format('blocksolve', time, 0.0, ":".join([jobid, nonce, blockhash]))
+                    self.submit_jobs[blockhash] = (sub_jobid, sub_time, sub_nonce, blockhash)
+                    self.log_action('blocksolve', time, 0.0, ":".join([jobid, nonce, blockhash]))
+
                 else:
-                    print("Error blocksolve without valid job: {}, {}, {}".format(nonce, jobid, time))
+                    print("Error blocksolve without valid job: {}, {}, {}".format(jobid, nonce, time))
             else:
-                print("Error blocksolve without valid job: {}, {}, {}".format(nonce, jobid, time))
+                print("Error blocksolve without valid job: {}, {}, {}".format(jobid, nonce, time))
 
         elif operation == 'submitblock':
             finish_time = args[0]
-            self.format('submitblock', time, delta_ms(time, finish_time), id)
+            self.log_action('submitblock', time, delta_ms(time, finish_time), id)
+            del self.submit_jobs[id]
 
     def jsonrpc_method(self, data):
         """Recover the method from a json-rpc message"""
         try:
-            call = json.loads(data)
+            try:
+                call = json.loads(data)
+            except json.decoder.JSONDecodeError as ex:
+                if ex.msg == "Extra data":
+                    call = json.loads(data[0:ex.pos])
+                else:
+                    raise ex
             if 'method' not in call:
+                if 'result' in call:
+                    return None
+                print("Error not a valid json-rpc call: {}".format(data))
                 return None
             return call['method']
         except json.decoder.JSONDecodeError as ex:
-            if data.find('"method": "submitblock"') >= 0:
-                return 'submitblock'
+            pos = data.find('"method":')
+            if pos >= 0:
+                pos += 9
+                if data[pos:pos+2] == ' "':
+                    pos += 2
+                elif data[pos:pos+1] == '"':
+                    pos += 1
+                end = data.find('"', pos)
+                if end >= 0:
+                    return data[pos:end]
+            if data[0:22] == '{"id":null,"params":["':
+                return "mining.notify"
+            print("{}".format(data))
+            raise ex
         except:
             raise
 
@@ -212,6 +236,15 @@ class LogFile:
         try:
             message = json.loads(data)
             return message['params'][0]
+        except json.decoder.JSONDecodeError as ex:
+            pos = data.find('"params":["')
+            if pos >= 0:
+                pos += 11
+                end = data.find('"', pos)
+                if end >= 0 and end - pos == 16:
+                    return data[pos:end]
+            print("{}".format(data))
+            raise ex
         except:
             print(" Failed to parse '{}'".format(data))
             raise
@@ -225,21 +258,21 @@ class LogFile:
             print(" Failed to parse '{}'".format(data))
             raise
 
-    def format(self, method, start, duration, id=None):
+    def log_action(self, method, start, duration, id=None):
+        self.process_action(method, start, duration, id)
+
         if self.output:
             self.output.write("{}, {}, {}, {}\n".format(method, start, duration, '' if id is None else id))
-        if self.summary:
-            self.add_operation(method, start, duration, id)
-        #else:
+
         #    print("{}, {}, {}, {}".format(method, start, duration, '' if id is None else id))
 
-    def add_operation(self, method, start, duration, id=None):
+    def process_action(self, method, start, duration, id=None):
 
         if method == 'getblocktemplate':
             if self.last_getblocktemplate is not None:
                 prev_start, prev_duration, prev_id, prev_clients = self.last_getblocktemplate
                 last_client = delta_ms(prev_start, prev_clients[-1]) - prev_duration if len(prev_clients) > 0 else '--'
-                print("getblocktemplate, {}, {}, {}, {}, {}".format(prev_start, prev_duration, prev_id, len(prev_clients), last_client))
+                self.print_summary("getblocktemplate, {}, {}, {}, {}, {}".format(prev_start, prev_duration, prev_id, len(prev_clients), last_client))
 
             self.last_getblocktemplate = (start, duration, id, [])
 
@@ -255,12 +288,25 @@ class LogFile:
                 print("Error mining.notify without getblocktemplate: {}, {}".format(start, id))
 
         elif method == 'submitblock':
-            if id in self.jobs:
-                sub_jobid, sub_time, sub_nonce, blockhash = self.jobs[id]
-                print("submitblock, {}, {}, {}, 1, {}".format(sub_time, delta_ms(sub_time, start), sub_jobid, duration))
-                del self.jobs[id]
+            if id in self.submit_jobs:
+                sub_jobid, sub_time, sub_nonce, blockhash = self.submit_jobs[id]
+                self.print_summary("submitblock, {}, {}, {}, 1, {}".format(sub_time, delta_ms(sub_time, start), sub_jobid, duration))
             else:
                 print("Error submitblock without valid job: {}, {}".format(id, start))
+
+    def print_summary(self, message):
+        if self.summary:
+            print(message)
+
+    def flush_info(self):
+        if self.last_getblocktemplate is not None:
+            prev_start, prev_duration, prev_id, prev_clients = self.last_getblocktemplate
+            last_client = delta_ms(prev_start, prev_clients[-1]) - prev_duration if len(prev_clients) > 0 else '--'
+            self.print_summary("getblocktemplate, {}, {}, {}, {}, {}".format(prev_start, prev_duration, prev_id, len(prev_clients), last_client))
+
+            self.last_getblocktemplate = None
+
+        self.submit_jobs = None
 
 
 def main():
