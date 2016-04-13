@@ -1239,7 +1239,7 @@ static void client_message_processor(ckpool_t *ckp, json_t *json_msg)
 	if (client_id > 0xffffffffll)
 		json_object_set_new_nocheck(json_msg, "client_id", json_integer(client_id & 0xffffffffll));
 
-	msg = json_dumps(json_msg, JSON_EOL | JSON_COMPACT);
+	msg = json_dumps(json_msg, JSON_EOL | JSON_COMPACT | JSON_PRESERVE_ORDER);
 	send_client(ckp->cdata, client_id, msg);
 	json_decref(json_msg);
 }
