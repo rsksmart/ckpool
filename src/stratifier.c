@@ -5173,8 +5173,14 @@ out:
 static void stratum_send_diff(sdata_t *sdata, const stratum_instance_t *client)
 {
 	json_t *json_msg;
-	
-	JSON_CPACK(json_msg, "{s[I]soss}", "params", client->diff, "id", json_null(),
+
+	double client_diff = client->diff;
+
+	if(true){
+		client_diff = 0.0001;
+	}
+
+	JSON_CPACK(json_msg, "{s[f]soss}", "params", client_diff, "id", json_null(),
 			     "method", "mining.set_difficulty");
 	stratum_add_send(sdata, json_msg, client->id, SM_DIFF);
 }
