@@ -39,6 +39,14 @@
 #define DAY	86400
 #define WEEK	604800
 
+/* Use in development mode only */
+#define DEV_MODE_ON true
+/* Difficulty value that will be send to the miners */
+#define MINER_DIFF	0.0001
+/* Difficulty value that will be used in block submission to RSK or BTC */
+#define RSK_CKPOOL_DIFF 0.0
+#define BTC_CKPOOL_DIFF 0.0
+
 /* Consistent across all pool instances */
 static const char *workpadding = "000000800000000000000000000000000000000000000000000000000000000000000000000000000000000080020000";
 static const char *scriptsig_header = "01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff";
@@ -1400,27 +1408,16 @@ retry:
 	if (ckp->rskds) {
 		memcpy(wb->rsk_blockheaderbin, rdata->blockhashmergebin, 32);
 
-		//printf("STRATIFIER:DO_UPDATE -- TARGET[0] FROM RDATA: %i\n", rdata->target[0]);
-
 		if(rdata->target[0] != 0){
 			char hash_swap[32], tmp[32];
 			char *target = (char*) malloc(65 * sizeof(char));
 			
-			//printf("STRATIFIER:DO_UPDATE -- blockhashmergebin FROM RDATA: %s\n", rdata->blockhashmergebin);
-			//printf("STRATIFIER:DO_UPDATE -- lastblockhashmerge FROM RDATA: %s\n", rdata->lastblockhashmerge);
-			//printf("STRATIFIER:DO_UPDATE -- blockhashmerge FROM RDATA: %s\n", rdata->blockhashmerge);
-			//printf("STRATIFIER:DO_UPDATE -- TARGET FROM RDATA: %s\n", rdata->target);
-
 			strncpy(target, rdata->target, 65);
-
-			//printf("STRATIFIER:DO_UPDATE -- TARGET FOR DIFF: %s\n", target);
 			hex2bin(hash_swap, target, 32);
 			bswap_256(tmp, hash_swap);
 			double rsk_diff = diff_from_target((uchar *)tmp);
-
-			//printf("STRATIFIER:DO_UPDATE -- RSK_DIFF: %f\n", rsk_diff);
-
 			wb->rsk_diff = rsk_diff;
+			free(target);
 		}
 
 		if (strncmp(rdata->blockhashmerge, rdata->lastblockhashmerge, 64)) {
@@ -1430,6 +1427,7 @@ retry:
 			}
 		}
 	}
+
 	generate_coinbase(ckp, wb);
 
 	add_base(ckp, sdata, wb, &new_block);
@@ -5173,11 +5171,10 @@ out:
 static void stratum_send_diff(sdata_t *sdata, const stratum_instance_t *client)
 {
 	json_t *json_msg;
-
 	double client_diff = client->diff;
 
-	if(true){
-		client_diff = 0.0001;
+	if(DEV_MODE_ON){
+		client_diff = MINER_DIFF;
 	}
 
 	JSON_CPACK(json_msg, "{s[f]soss}", "params", client_diff, "id", json_null(),
@@ -5368,6 +5365,15 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	ts_t ts_now;
 	bool submit_bitcoind = false;
 	bool submit_rskd = false;
+
+	if(DEV_MODE_ON){
+		sdata->current_workbase->rsk_diff = RSK_CKPOOL_DIFF;
+		sdata->current_workbase->network_diff = BTC_CKPOOL_DIFF;
+
+		printf("RSK LOG -- DIFF:     %f\n", diff);
+		printf("RSK LOG -- RSK DIFF: %f\n", sdata->current_workbase->rsk_diff);
+		printf("RSK LOG -- BTC DIFF: %f\n", sdata->current_workbase->network_diff);
+	}
 
 	/* Rootstock difficulty */
 	submit_rskd = !(diff < sdata->current_workbase->rsk_diff * 0.999);
