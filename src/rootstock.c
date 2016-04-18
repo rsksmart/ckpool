@@ -62,8 +62,7 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	size_t len = 67 + 16; // strlen(rsk_getwork_req) + len(id)
 	const char* blockhashmerge;
 	char blockhashmergebin[33];
-	double difficulty = 0.0;
-	const char* strdifficulty;
+	const char* target;
 	double minerfees = 0.0;
 	const char* strminerfees;
 	int notify = 0;
@@ -85,9 +84,11 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	}
 
 	blockhashmerge = json_string_value(json_object_get(res_val, "blockHashForMergedMining"));
-	strdifficulty = json_string_value(json_object_get(res_val, "difficultyBI"));
+	target = json_string_value(json_object_get(res_val, "target"));
+
+	//printf("ROOTSTOCK:GET_WORK -- TARGET FROM RSK:  %s\n", target);
+
 	strminerfees = json_string_value(json_object_get(res_val, "feesPaidToMiner"));
-	difficulty = atof(strdifficulty);
 	minerfees = atof(strminerfees);
 	notify = json_integer_value(json_object_get(res_val, "notifyFlag"));
 
@@ -96,7 +97,10 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	b642bin(blockhashmergebin, blockhashmerge, 32);
 	memcpy(rgw->blockhashmergebin, blockhashmergebin, 32);
 
-	rgw->difficulty = difficulty;
+	strcpy(rgw->target, target);
+
+	//printf("ROOTSTOCK:GET_WORK -- TARGET FROM RGW:  %s\n", rgw->target);
+
 	rgw->minerfees = minerfees;
 	rgw->notify = notify;
 
@@ -324,6 +328,9 @@ reconnect:
 	}
 
 	rgw = si->data;
+
+	//printf("ROOTSTOCK:RSK_LOOP -- TARGET FROM RGW 1: %s\n", rgw->target);
+
 	cs = &si->cs;
 	if (!old_si)
 		LOGWARNING("Connected to rskd: %s:%s", cs->url, cs->port);
@@ -352,7 +359,13 @@ retry:
 			goto reconnect;
 		} else {
 			memcpy(rdata->blockhashmergebin, rgw->blockhashmergebin, 32);
-			rdata->difficulty = rgw->difficulty;
+
+			//printf("ROOTSTOCK:RSK_LOOP -- TARGET FROM RGW 2: %s\n", rgw->target);
+
+			strcpy(rdata->target, rgw->target);
+
+			//printf("ROOTSTOCK:RSK_LOOP -- TARGET FROM RDATA: %s\n", rdata->target);
+
 			rdata->minerfees = rgw->minerfees;
 			rdata->notify = rgw->notify;
 			strcpy(rdata->blockhashmerge, rgw->blockhashmerge);

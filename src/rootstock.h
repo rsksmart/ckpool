@@ -18,7 +18,7 @@ struct rootstock_data {
 
 	/* Last getwork parameters */
 	char blockhashmergebin[32];
-	double difficulty;
+	char target[68];
 	double minerfees;
 	int notify;
 	char blockhashmerge[68];
@@ -31,7 +31,7 @@ typedef struct rootstock_data rdata_t;
 
 struct rsk_getwork {
 	char blockhashmergebin[32];
-	double difficulty;
+	char target[68];
 	double minerfees;
 	int notify;
 

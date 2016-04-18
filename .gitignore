@@ -42,3 +42,7 @@ ltmain.sh
 libtool
 
 
+run
+.cproject
+.directory
+.project
