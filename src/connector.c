@@ -500,7 +500,7 @@ reparse:
 		return false;
 	}
 
-	LOGINFO("ROOTSTOCK: parse_client_msg: %s", client->buf);
+	LOGINFO("ROOTSTOCK: parse_client_msg: %"PRId64", %s", client->id, client->buf);
 
 	if (!(val = json_loads(client->buf, JSON_DISABLE_EOF_CHECK, NULL))) {
 		char *buf = strdup("Invalid JSON, disconnecting\n");
@@ -742,7 +742,7 @@ static bool send_sender_send(ckpool_t *ckp, cdata_t *cdata, sender_send_t *sende
 	}
 out_true:
 
-	LOGINFO("ROOTSTOCK: send_client_complete %"PRId64", %p", client->id, sender_send);
+	LOGINFO("ROOTSTOCK: send_client_complete: %"PRId64", %p", client->id, sender_send);
 
 	client->sending = NULL;
 	return true;
@@ -1239,7 +1239,7 @@ static void client_message_processor(ckpool_t *ckp, json_t *json_msg)
 	if (client_id > 0xffffffffll)
 		json_object_set_new_nocheck(json_msg, "client_id", json_integer(client_id & 0xffffffffll));
 
-	msg = json_dumps(json_msg, JSON_EOL | JSON_COMPACT);
+	msg = json_dumps(json_msg, JSON_EOL | JSON_COMPACT | JSON_PRESERVE_ORDER);
 	send_client(ckp->cdata, client_id, msg);
 	json_decref(json_msg);
 }

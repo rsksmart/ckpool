@@ -1354,6 +1354,8 @@ static void *do_update(void *arg)
 	time_t now_t;
 	char *buf;
 	bool new_rootstock = false;
+	tv_t start_tv;
+	tv_t finish_tv;
 
 	pthread_detach(pthread_self());
 	rename_proc("updater");
@@ -1369,7 +1371,9 @@ static void *do_update(void *arg)
 	} else
 		cksem_wait(&sdata->update_sem);
 retry:
+	tv_time(&start_tv);
 	buf = send_recv_generator(ckp, "getbase", prio);
+	tv_time(&finish_tv);
 	if (unlikely(!buf)) {
 		LOGNOTICE("Get base in update_base delayed due to higher priority request");
 		goto out;
@@ -1440,6 +1444,22 @@ retry:
 
 	if (new_block)
 		LOGNOTICE("Block hash changed to %s", sdata->lastswaphash);
+
+	{
+		struct tm start_tm;
+		int start_ms = (int)(start_tv.tv_usec / 1000);
+		struct tm finish_tm;
+		int finish_ms = (int)(finish_tv.tv_usec / 1000);
+		localtime_r(&(start_tv.tv_sec), &start_tm);
+		localtime_r(&(finish_tv.tv_sec), &finish_tm);
+		LOGINFO("ROOTSTOCK: getblocktemplate: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
+			start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
+			start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
+			finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
+			finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
+			wb->idstring);
+		}
+
 	stratum_broadcast_update(sdata, wb, new_block || new_rootstock);
 	ret = true;
 	LOGINFO("Broadcast updated stratum base");
@@ -5397,6 +5417,8 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	if (!submit_bitcoind)
 		return;
 
+	LOGINFO("ROOTSTOCK: blocksolve: %s, %s, %s, %s", wb->idstring, nonce, nonce2, blockhash);
+
 	send_node_block(sdata, client->enonce1, nonce, nonce2, ntime32, wb->id,
 			diff, client->id);
 
@@ -5798,7 +5820,8 @@ static json_t *__stratum_notify(const workbase_t *wb, const bool clean)
 {
 	json_t *val;
 
-	JSON_CPACK(val, "{s:[ssssosssb],s:o,s:s}",
+	JSON_CPACK(val, "{s:s,s:[ssssosssb],s:o}",
+			"method", "mining.notify",
 			"params",
 			wb->idstring,
 			wb->prevhash,
@@ -5809,8 +5832,7 @@ static json_t *__stratum_notify(const workbase_t *wb, const bool clean)
 			wb->nbit,
 			wb->ntime,
 			clean,
-			"id", json_null(),
-			"method", "mining.notify");
+			"id", json_null());
 	return val;
 }
 
