@@ -40,12 +40,12 @@
 #define WEEK	604800
 
 /* Use in development mode only */
-#define DEV_MODE_ON true
+#define DEV_MODE_ON false
 /* Difficulty value that will be send to the miners */
-#define MINER_DIFF	0.0001
+#define MINER_DIFF	0.00001
 /* Difficulty value that will be used in block submission to RSK or BTC */
-#define RSK_CKPOOL_DIFF 0.0
-#define BTC_CKPOOL_DIFF 0.0
+#define RSK_CKPOOL_DIFF 0.0001
+#define BTC_CKPOOL_DIFF 0.003
 
 /* Consistent across all pool instances */
 static const char *workpadding = "000000800000000000000000000000000000000000000000000000000000000000000000000000000000000080020000";
