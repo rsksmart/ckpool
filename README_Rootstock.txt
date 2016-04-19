@@ -272,7 +272,7 @@ Created to allow miners to receive a very small difficulty value for mining.
 As a consequence, miners will mine at a faster rate.
 Needed because on a regular computer mining can take too long.
 
-To activate Dev Mode the value of te following line should be true:
+To activate Dev Mode the value of te following line (located on file. stratifier.c) should be true:
   
   > #define DEV_MODE_ON true
 
