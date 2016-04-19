@@ -135,10 +135,32 @@ The output should be something like
 RootstockJ
 ----------
 
-TODO. 
+0) Install Oracle Java 8
 
-I will assume that it is up and running at 192.168.0.118:4444
+  > sudo add-apt-repository ppa:webupd8team/java
+  > sudo apt-get update
+  > sudo apt-get install oracle-java8-installer
 
+1) Checkout RootstockJ source in a directory named RootstockJ
+
+  > git clone https://github.com/rootstock/rootstockJ.git
+
+2) Generate fat jar for RootstockJ
+ 
+  - Inside RootstockJ's directory (where it was cloned on step 1), run the following command:
+
+  > gradle shadow
+
+- The fat jar will be generated in ethereumj-core/build/libs/
+
+3) Run miner
+
+  > java -Dethereumj.conf.file=node1.conf -cp rootstock.jar io.rootstock.Start
+
+  - rootstock.jar is the name of the fatjar.
+  - Configuration file for node1 is named node1.conf.
+  - node1.conf is in the same folder as the jar.
+  - Node1 will be listening for RPC at 127.0.0.1:4444.
 
 
 Ckpool
@@ -166,7 +188,7 @@ So we have the binaries in ckpool/src and our test will run on ckpool/run
 ],
 "rskd" :  [
 	{
-		"url" : "192.168.0.118:4444",
+		"url" : "127.0.0.1:4444",
 		"auth" : "user",
 		"pass" : "pass"
 	}
@@ -226,7 +248,7 @@ It should output something like this
 [2016-03-17 16:07:07.606] Connected to bitcoind: 127.0.0.1:32591
 [2016-03-17 16:07:07.613] ckpool stratifier ready
 [2016-03-17 16:07:07.841] ckpool rootstock ready
-[2016-03-17 16:07:07.846] Connected to rskd: 192.168.0.118:4444
+[2016-03-17 16:07:07.846] Connected to rskd: 127.0.0.1:4444
 ```
 
 4) It should be ready to connect with a miner
