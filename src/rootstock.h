@@ -22,20 +22,25 @@ struct rootstock_data {
 	double minerfees;
 	int notify;
 	char blockhashmerge[68];
+	char parentblockhashbin[32];
+	char parentblockhash[68];
 
 	/* Last hash being worked on */
 	char lastblockhashmerge[68];
+	char lastparentblockhash[68];
 };
 
 typedef struct rootstock_data rdata_t;
 
 struct rsk_getwork {
 	char blockhashmergebin[32];
+	char parentblockhashbin[32];
 	char target[68];
 	double minerfees;
 	int notify;
 
 	char blockhashmerge[68];
+	char parentblockhash[68];
 };
 
 typedef struct rsk_getwork rsk_getwork_t;

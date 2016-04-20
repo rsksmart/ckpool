@@ -61,10 +61,12 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	char *rpc_req;
 	size_t len = 67 + 16; // strlen(rsk_getwork_req) + len(id)
 	const char* blockhashmerge;
-	char blockhashmergebin[33];
+	char blockhashmergebin[36];
 	const char* target;
 	double minerfees = 0.0;
 	const char* strminerfees;
+	const char* parentblockhash;
+	char parentblockhashbin[36];
 	int notify = 0;
 	int id;
 
@@ -92,14 +94,19 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	minerfees = atof(strminerfees);
 	notify = json_integer_value(json_object_get(res_val, "notifyFlag"));
 
-	strcpy(rgw->blockhashmerge, blockhashmerge);
+	parentblockhash = json_string_value(json_object_get(res_val, "parentBlockHash"));
 
+	strcpy(rgw->blockhashmerge, blockhashmerge);
 	b642bin(blockhashmergebin, blockhashmerge, 32);
 	memcpy(rgw->blockhashmergebin, blockhashmergebin, 32);
 
 	strcpy(rgw->target, target);
 
 	//printf("ROOTSTOCK:GET_WORK -- TARGET FROM RGW:  %s\n", rgw->target);
+
+	strcpy(rgw->parentblockhash, parentblockhash);
+	b642bin(parentblockhashbin, parentblockhash, 32);
+	memcpy(rgw->parentblockhashbin, parentblockhashbin, 32);
 
 	rgw->minerfees = minerfees;
 	rgw->notify = notify;
@@ -369,6 +376,8 @@ retry:
 			rdata->minerfees = rgw->minerfees;
 			rdata->notify = rgw->notify;
 			strcpy(rdata->blockhashmerge, rgw->blockhashmerge);
+			memcpy(rdata->parentblockhashbin, rgw->parentblockhashbin, 32);
+			strcpy(rdata->parentblockhash, rgw->parentblockhash);
 			send_unix_msg(umsg->sockd, rdata->blockhashmerge);
 		}
 	} else if (cmdmatch(buf, "submitblock:")) {

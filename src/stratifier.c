@@ -1414,21 +1414,22 @@ retry:
 
 		if(rdata->target[0] != 0){
 			char hash_swap[32], tmp[32];
-			char *target = (char*) malloc(65 * sizeof(char));
-			
+			char target[68];
+
 			strncpy(target, rdata->target, 65);
 			hex2bin(hash_swap, target, 32);
 			bswap_256(tmp, hash_swap);
 			double rsk_diff = diff_from_target((uchar *)tmp);
 			wb->rsk_diff = rsk_diff;
-			free(target);
 		}
 
 		if (strncmp(rdata->blockhashmerge, rdata->lastblockhashmerge, 64)) {
-			strcpy(rdata->lastblockhashmerge, rdata->blockhashmerge);
-			if ((ckp->rsknotifypolicy == 1 && rdata->notify) || ckp->rsknotifypolicy == 2) {
+			if ((ckp->rsknotifypolicy == 1 && rdata->notify) || 
+				(ckp->rsknotifypolicy == 2 && strncmp(rdata->parentblockhash, rdata->lastparentblockhash, 64))) {
 				new_rootstock = true;
 			}
+			strcpy(rdata->lastblockhashmerge, rdata->blockhashmerge);
+			strcpy(rdata->lastparentblockhash, rdata->parentblockhash);
 		}
 	}
 
