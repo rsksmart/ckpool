@@ -500,6 +500,7 @@ reparse:
 		return false;
 	}
 
+	client->buf[client->bufofs] = '\0';
 	LOGINFO("ROOTSTOCK: parse_client_msg: %"PRId64", %s", client->id, client->buf);
 
 	if (!(val = json_loads(client->buf, JSON_DISABLE_EOF_CHECK, NULL))) {

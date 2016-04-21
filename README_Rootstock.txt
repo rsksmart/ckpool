@@ -394,7 +394,7 @@ submitblock, 2016-04-12 13:40:36.208000, , 570d22f50000000f, 1, 1.0
 
 action: submitblock
 start: 2016-04-12 13:40:36.208000
-	The time the mining.submit was received by bitcoind
+	The time the mining.submit was received by CKPool
 duration: 1.0
 	The time elapsed until the block is sent to bitcoind, in miliseconds
 jobid: 570d22f50000000f
