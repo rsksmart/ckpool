@@ -38,6 +38,13 @@
 #define DAY	86400
 #define WEEK	604800
 
+/* Use in development mode only */
+#define DEV_MODE_ON true
+/* Difficulty value that will be send to the miners */
+#define MINER_DIFF	0.005
+/* Difficulty value that will be used in block submission to BTC */
+#define BTC_CKPOOL_DIFF 0.1
+
 /* Consistent across all pool instances */
 static const char *workpadding = "000000800000000000000000000000000000000000000000000000000000000000000000000000000000000080020000";
 static const char *scriptsig_header = "01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff";
@@ -5134,7 +5141,13 @@ static void stratum_send_diff(sdata_t *sdata, const stratum_instance_t *client)
 {
 	json_t *json_msg;
 
-	JSON_CPACK(json_msg, "{s[I]soss}", "params", client->diff, "id", json_null(),
+	double client_diff = client->diff;
+
+	if(DEV_MODE_ON){
+		client_diff = MINER_DIFF;
+	}
+
+	JSON_CPACK(json_msg, "{s[f]soss}", "params", client_diff, "id", json_null(),
 			     "method", "mining.set_difficulty");
 	stratum_add_send(sdata, json_msg, client->id, SM_DIFF);
 }
@@ -5320,6 +5333,14 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	ckmsg_t *block_ckmsg;
 	uchar swap32[32];
 	ts_t ts_now;
+	bool submit_bitcoind = false;
+
+	if(DEV_MODE_ON){
+		sdata->current_workbase->network_diff = BTC_CKPOOL_DIFF;
+
+		//printf("RSK LOG -- DIFF:     %f\n", diff);
+		//printf("RSK LOG -- BTC DIFF: %f\n", sdata->current_workbase->network_diff);
+	}
 
 	/* Submit anything over 99.9% of the diff in case of rounding errors */
 	if (diff < sdata->current_workbase->network_diff * 0.999)
