@@ -40,12 +40,12 @@
 #define WEEK	604800
 
 /* Use in development mode only */
-#define DEV_MODE_ON false
+#define DEV_MODE_ON true
 /* Difficulty value that will be send to the miners */
-#define MINER_DIFF	0.00001
+#define MINER_DIFF	0.005
 /* Difficulty value that will be used in block submission to RSK or BTC */
-#define RSK_CKPOOL_DIFF 0.0001
-#define BTC_CKPOOL_DIFF 0.003
+#define RSK_CKPOOL_DIFF 0.0
+#define BTC_CKPOOL_DIFF 0.1
 
 /* Consistent across all pool instances */
 static const char *workpadding = "000000800000000000000000000000000000000000000000000000000000000000000000000000000000000080020000";
@@ -5391,9 +5391,9 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 		sdata->current_workbase->rsk_diff = RSK_CKPOOL_DIFF;
 		sdata->current_workbase->network_diff = BTC_CKPOOL_DIFF;
 
-		printf("RSK LOG -- DIFF:     %f\n", diff);
-		printf("RSK LOG -- RSK DIFF: %f\n", sdata->current_workbase->rsk_diff);
-		printf("RSK LOG -- BTC DIFF: %f\n", sdata->current_workbase->network_diff);
+		//printf("RSK LOG -- DIFF:     %f\n", diff);
+		//printf("RSK LOG -- RSK DIFF: %f\n", sdata->current_workbase->rsk_diff);
+		//printf("RSK LOG -- BTC DIFF: %f\n", sdata->current_workbase->network_diff);
 	}
 
 	/* Rootstock difficulty */

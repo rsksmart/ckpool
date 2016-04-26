@@ -75,6 +75,7 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	sprintf(rpc_req, rsk_getwork_req, id);
 
 	val = json_rpc_call(cs, rpc_req);
+	dealloc(rpc_req);
 	if (!val) {
 		LOGWARNING("%s:%s Failed to get valid json response to eth_getWork", cs->url, cs->port);
 		return ret;
