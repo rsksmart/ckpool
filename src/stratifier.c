@@ -1459,7 +1459,7 @@ retry:
 			finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
 			finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
 			wb->idstring);
-		}
+	}
 
 	stratum_broadcast_update(sdata, wb, new_block || new_rootstock);
 	ret = true;
@@ -5313,7 +5313,11 @@ static void add_submit(ckpool_t *ckp, stratum_instance_t *client, const double d
 
 	/* Diff rate ratio */
 	dsps = client->dsps5 / bias;
-	drr = dsps / (double)client->diff;
+	if (DEV_MODE_ON) {
+		drr = dsps / (MINER_DIFF + (double)client->diff);
+	} else {
+		drr = dsps / (double)client->diff;
+	}
 
 	/* Optimal rate product is 0.3, allow some hysteresis. */
 	if (drr > 0.15 && drr < 0.4)
