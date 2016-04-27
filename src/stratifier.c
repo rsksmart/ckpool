@@ -5347,7 +5347,13 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	}
 
 	/* Submit anything over 99.9% of the diff in case of rounding errors */
-	if (diff < sdata->current_workbase->network_diff * 0.999)
+	submit_bitcoind = !(diff < sdata->current_workbase->network_diff * 0.999);
+
+	LOGINFO("ROOTSTOCK: solution: %s, %s, %s, %s", wb->idstring, nonce, 
+		(submit_bitcoind ? "BTC" : "--"),
+		"--");
+
+	if (!submit_bitcoind)
 		return;
 
 	LOGWARNING("Possible block solve diff %f !", diff);
