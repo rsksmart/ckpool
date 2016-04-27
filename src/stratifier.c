@@ -1443,8 +1443,10 @@ retry:
 		now_t -= ckp->update_interval / 2;
 	sdata->update_time = now_t;
 
-	if (new_block)
+	if (new_block) {
 		LOGNOTICE("Block hash changed to %s", sdata->lastswaphash);
+		LOGINFO("ROOTSTOCK: newblock: %s, %s", wb->idstring, sdata->lastswaphash);
+	}
 
 	{
 		struct tm start_tm;
