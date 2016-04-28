@@ -44,7 +44,7 @@ class LogFile:
 
     def parseline(self, line):
         if line.find("ROOTSTOCK:") < 0: # Ignore lines that were not logged by us
-            return None
+            return
 
         # Log line format is [time] ROOTSTOCK: <operation>: <data>
         result = parse.parse("[{:ti}] {}: {}: {}", line)
@@ -52,7 +52,7 @@ class LogFile:
         # Drop ill formed lines
         if (result is None) or (len(result.fixed) != 4) or (result.fixed[1] != 'ROOTSTOCK'):
             print("Failed to parse: |{}|".format(line))
-            return None
+            return
 
         time = result.fixed[0]
         operation = result.fixed[2]
@@ -63,21 +63,23 @@ class LogFile:
             rpc_call = parse.parse("{:x}, {}", data)
             if (rpc_call.fixed is None) or (len(rpc_call.fixed) != 2):
                 print("Failed to parse: |{}|".format(line))
-                return None
+                return
             call_id = rpc_call.fixed[0]
             call = rpc_call.fixed[1]
 
-            return self.process_operation('json_rpc_call', call_id, time, call)
+            self.process_operation('json_rpc_call', call_id, time, call)
+            return
 
         elif operation == 'json_rpc_reply':
             rpc_reply = parse.parse("{:x}, {}", data)
             if (rpc_reply.fixed is None) or (len(rpc_reply.fixed) != 2):
                 print("Failed to parse: |{}|".format(line))
-                return None
+                return
             call_id = rpc_reply.fixed[0]
             reply = rpc_reply.fixed[1]
 
-            return self.process_operation('json_rpc_reply', call_id, time, reply)
+            self.process_operation('json_rpc_reply', call_id, time, reply)
+            return
 
         elif operation == "send_client_send":
             send_client = parse.parse("{:d}, {:x}, {}", data)
@@ -85,27 +87,31 @@ class LogFile:
             send_id = send_client.fixed[1]
             send = send_client.fixed[2]
 
-            return self.process_operation('send_client_send', send_id, time, send, client_id)
+            self.process_operation('send_client_send', send_id, time, send, client_id)
+            return
 
         elif operation == "send_client_complete":
             send_client = parse.parse("{:d}, {:x}", data)
             client_id = send_client.fixed[0]
             send_id = send_client.fixed[1]
 
-            return self.process_operation('send_client_complete', send_id, time, '', client_id)
+            self.process_operation('send_client_complete', send_id, time, '', client_id)
+            return
 
         elif operation == "parse_client_msg":
             client_message = parse.parse("{:d}, {}", data)
             client_id = client_message.fixed[0]
             message = client_message.fixed[1]
-            return self.process_operation('parse_client_msg', client_id, time, message)
+            self.process_operation('parse_client_msg', client_id, time, message)
+            return
 
         elif operation == "getblocktemplate":
             message = parse.parse("{:ti}, {:ti}, {}", data)
             start_time = message.fixed[0]
             finish_time = message.fixed[1]
             work_id = message.fixed[2]
-            return self.process_operation('getblocktemplate', work_id, start_time, '', finish_time)
+            self.process_operation('getblocktemplate', work_id, start_time, '', finish_time)
+            return
 
         elif operation == "blocksolve":
             message = parse.parse("{}, {}, {}, {}", data)
@@ -113,7 +119,8 @@ class LogFile:
             nonce = message.fixed[1]
             nonce2 = message.fixed[2]
             blockhash = message.fixed[3]
-            return self.process_operation('blocksolve', jobid, time, (jobid, nonce, nonce2, blockhash))
+            self.process_operation('blocksolve', jobid, time, (jobid, nonce, nonce2, blockhash))
+            return
 
         elif operation == "submitblock":
             message = parse.parse("{:ti}, {:ti}, {}:{}", data)
@@ -121,10 +128,35 @@ class LogFile:
             finish_time = message.fixed[1]
             result = message.fixed[2]
             blockhash = message.fixed[3]
-            return self.process_operation('submitblock', blockhash, start_time, result, finish_time)
+            self.process_operation('submitblock', blockhash, start_time, result, finish_time)
+            return
+
+        elif operation == "newblock":
+            message = parse.parse("{}, {}", data)
+            jobid = message.fixed[0]
+            prevblockhash = message.fixed[1]
+            self.process_operation('newblock', jobid, time, prevblockhash)
+            return
+
+        elif operation == "solution":
+            message = parse.parse("{}, {}, {}, {}", data)
+            jobid = message.fixed[0]
+            nonce = message.fixed[1]
+            btc_solution = message.fixed[2]
+            rsk_solution = message.fixed[3]
+            self.process_operation('solution', ":".join([jobid, nonce]), time, ":".join([btc_solution, rsk_solution]))
+            return
+
+        elif operation == "processSPVProof":
+            message = parse.parse("{:ti}, {:ti}, {}", data)
+            start_time = message.fixed[0]
+            finish_time = message.fixed[1]
+            blockhash = message.fixed[2]
+            self.process_operation('processSPVProof', blockhash, start_time, '', finish_time)
+            return
 
         print("Failed to parse: |{}|".format(line))
-        return None
+        raise ValueError('Unexpected line: {}'.format(line))
 
     # Process individual operations and map them to a high livel operation
     def process_operation(self, operation, id, time, data, *args):
@@ -192,77 +224,29 @@ class LogFile:
 
         elif operation == 'submitblock':
             finish_time = args[0]
-            self.log_action('submitblock', time, delta_ms(time, finish_time), id)
+            self.log_action('submitblock', time, delta_ms(time, finish_time), id, data)
             del self.submit_jobs[id]
 
-    def jsonrpc_method(self, data):
-        """Recover the method from a json-rpc message"""
-        try:
-            try:
-                call = json.loads(data)
-            except json.decoder.JSONDecodeError as ex:
-                if ex.msg == "Extra data":
-                    call = json.loads(data[0:ex.pos])
-                else:
-                    raise ex
-            if 'method' not in call:
-                if 'result' in call:
-                    return None
-                print("Error not a valid json-rpc call: {}".format(data))
-                return None
-            return call['method']
-        except json.decoder.JSONDecodeError as ex:
-            pos = data.find('"method":')
-            if pos >= 0:
-                pos += 9
-                if data[pos:pos+2] == ' "':
-                    pos += 2
-                elif data[pos:pos+1] == '"':
-                    pos += 1
-                end = data.find('"', pos)
-                if end >= 0:
-                    return data[pos:end]
-            if data[0:22] == '{"id":null,"params":["':
-                return "mining.notify"
-            print("{}".format(data))
-            raise ex
-        except:
-            raise
+        elif operation == 'newblock':
+            jobid = id
+            prevblockhash = data
+            self.log_action('newblock', time, 0.0, ":".join([jobid, prevblockhash]))
 
-        return None
+        elif operation == 'solution':
+            self.log_action('solution', time, 0.0, ":".join([id, data]))
 
-    def notify_jobid(self, data):
-        """Recover the jobid for a mining.notify message"""
-        try:
-            message = json.loads(data)
-            return message['params'][0]
-        except json.decoder.JSONDecodeError as ex:
-            pos = data.find('"params":["')
-            if pos >= 0:
-                pos += 11
-                end = data.find('"', pos)
-                if end >= 0 and end - pos == 16:
-                    return data[pos:end]
-            print("{}".format(data))
-            raise ex
-        except:
-            print(" Failed to parse '{}'".format(data))
-            raise
+        elif operation == 'processSPVProof':
+            finish_time = args[0]
+            self.log_action('processSPVProof', time, delta_ms(time, finish_time), id)
 
-    def submit_jobid(self, data):
-        """Recover the jobid from a mining.submit message"""
-        try:
-            message = json.loads(data)
-            return message['params'][1], message['params'][4]
-        except:
-            print(" Failed to parse '{}'".format(data))
-            raise
-
-    def log_action(self, method, start, duration, id=None):
+    def log_action(self, method, start, duration, id=None, extra=None):
         self.process_action(method, start, duration, id)
 
         if self.output:
-            self.output.write("{}, {}, {}, {}\n".format(method, start, duration, '' if id is None else id))
+            myid = '' if id is None else id
+            if extra is not None:
+                myid += ":" + extra
+            self.output.write("{}, {}, {}, {}\n".format(method, start, duration, myid))
 
         #    print("{}, {}, {}, {}".format(method, start, duration, '' if id is None else id))
 
@@ -307,6 +291,69 @@ class LogFile:
             self.last_getblocktemplate = None
 
         self.submit_jobs = None
+
+    def jsonrpc_method(self, data):
+        """Recover the method from a json-rpc message"""
+        try:
+            try:
+                call = json.loads(data)
+            except json.decoder.JSONDecodeError as ex:
+                if ex.msg == "Extra data":
+                    call = json.loads(data[0:ex.pos])
+                else:
+                    raise ex
+            if 'method' not in call:
+                if 'result' in call:
+                    return None
+                print("Error not a valid json-rpc call: {}".format(data))
+                return None
+            return call['method']
+        except json.decoder.JSONDecodeError as ex:
+            pos = data.find('"method":')
+            if pos >= 0:
+                pos += 9
+                if data[pos:pos + 2] == ' "':
+                    pos += 2
+                elif data[pos:pos + 1] == '"':
+                    pos += 1
+                end = data.find('"', pos)
+                if end >= 0:
+                    return data[pos:end]
+            if data[0:22] == '{"id":null,"params":["':
+                return "mining.notify"
+            print("{}".format(data))
+            raise ex
+        except:
+            raise
+
+        return None
+
+    def notify_jobid(self, data):
+        """Recover the jobid for a mining.notify message"""
+        try:
+            message = json.loads(data)
+            return message['params'][0]
+        except json.decoder.JSONDecodeError as ex:
+            pos = data.find('"params":["')
+            if pos >= 0:
+                pos += 11
+                end = data.find('"', pos)
+                if end >= 0 and end - pos == 16:
+                    return data[pos:end]
+            print("{}".format(data))
+            raise ex
+        except:
+            print(" Failed to parse '{}'".format(data))
+            raise
+
+    def submit_jobid(self, data):
+        """Recover the jobid from a mining.submit message"""
+        try:
+            message = json.loads(data)
+            return message['params'][1], message['params'][4]
+        except:
+            print(" Failed to parse '{}'".format(data))
+            raise
 
 
 def main():
