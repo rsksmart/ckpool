@@ -5425,10 +5425,10 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 
 	process_block(ckp, wb, coinbase, cblen, data, hash, swap32, blockhash, submit_bitcoind, submit_rskd);
 
+	LOGINFO("ROOTSTOCK: blocksolve: %s, %s, %s, %s", wb->idstring, nonce, nonce2, blockhash);
+
 	if (!submit_bitcoind)
 		return;
-
-	LOGINFO("ROOTSTOCK: blocksolve: %s, %s, %s, %s", wb->idstring, nonce, nonce2, blockhash);
 
 	send_node_block(sdata, client->enonce1, nonce, nonce2, ntime32, wb->id,
 			diff, client->id);
