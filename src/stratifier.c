@@ -5777,7 +5777,7 @@ out_unlock:
 	}
 	ckdbq_add(ckp, ID_SHARES, val);
 out:
-	if (!sdata->wbincomplete && ((!result && !submit) || !share)) {
+	if (!sdata->wbincomplete && ((!result && !submit) || !share) && !DEV_MODE_ON) {
 		/* Is this the first in a run of invalids? */
 		if (client->first_invalid < client->last_share.tv_sec || !client->first_invalid)
 			client->first_invalid = now_t;
