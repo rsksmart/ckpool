@@ -14,6 +14,7 @@
 #include "libckpool.h"
 #include "rootstock.h"
 
+#define CHAR_ARRAY_64_COPY_SIZE 65
 
 static unsigned int b64val(char c) {
 	if (c >= 'A' && c <= 'Z') {
@@ -89,23 +90,19 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	blockhashmerge = json_string_value(json_object_get(res_val, "blockHashForMergedMining"));
 	target = json_string_value(json_object_get(res_val, "target"));
 
-	//printf("ROOTSTOCK:GET_WORK -- TARGET FROM RSK:  %s\n", target);
-
 	strminerfees = json_string_value(json_object_get(res_val, "feesPaidToMiner"));
 	minerfees = atof(strminerfees);
-	notify = json_integer_value(json_object_get(res_val, "notifyFlag"));
+	notify = json_is_true(json_object_get(res_val, "notifyFlag"));
 
 	parentblockhash = json_string_value(json_object_get(res_val, "parentBlockHash"));
 
-	strcpy(rgw->blockhashmerge, blockhashmerge);
+	strncpy(rgw->blockhashmerge, blockhashmerge, CHAR_ARRAY_64_COPY_SIZE);
 	b642bin(blockhashmergebin, blockhashmerge, 32);
 	memcpy(rgw->blockhashmergebin, blockhashmergebin, 32);
 
-	strcpy(rgw->target, target);
+	strncpy(rgw->target, target, CHAR_ARRAY_64_COPY_SIZE);
 
-	//printf("ROOTSTOCK:GET_WORK -- TARGET FROM RGW:  %s\n", rgw->target);
-
-	strcpy(rgw->parentblockhash, parentblockhash);
+	strncpy(rgw->parentblockhash, parentblockhash, CHAR_ARRAY_64_COPY_SIZE);
 	b642bin(parentblockhashbin, parentblockhash, 32);
 	memcpy(rgw->parentblockhashbin, parentblockhashbin, 32);
 
