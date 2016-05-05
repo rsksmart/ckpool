@@ -1812,12 +1812,13 @@ process_block(ckpool_t *ckp, const workbase_t *wb, const char *coinbase, const i
 	if (ckp->rskds && submit_rskd)
 		send_proc(ckp->rootstock, gbt_block);
 	if (!submit_bitcoind)
-		return;
+		goto out;
 	send_generator(ckp, gbt_block, GEN_PRIORITY);
 	if (ckp->remote)
 		upstream_blocksubmit(ckp, gbt_block);
 	else
 		downstream_blocksubmits(ckp, gbt_block, NULL);
+out:
 	free(gbt_block);
 }
 
