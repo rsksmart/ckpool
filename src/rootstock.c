@@ -14,6 +14,8 @@
 #include "libckpool.h"
 #include "rootstock.h"
 
+#include "rsktestconfig.h"
+
 #define CHAR_ARRAY_64_COPY_SIZE 65
 
 static unsigned int b64val(char c) {
@@ -181,7 +183,7 @@ static void *rootstock_update(void *arg)
 	while (42) {
 		dealloc(buf);
 		buf = send_recv_proc(ckp->rootstock, "getwork");
-		if (buf && strcmp(buf, rdata->lastblockhashmerge) && !cmdmatch(buf, "failed")) {
+		if (buf && (strcmp(buf, rdata->lastblockhashmerge) || PERF_TEST_MODE_ON) && !cmdmatch(buf, "failed")) {
 			if (ckp->rsknotifypolicy == 1 && rdata->notify || ckp->rsknotifypolicy == 2) {
 				LOGWARNING("Rootstock: update %s", buf);
 				send_proc(ckp->stratifier, "update");
