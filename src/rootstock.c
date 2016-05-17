@@ -171,6 +171,10 @@ out:
 	return ret;
 }
 
+/*
+ * Every "rskpollperiod" invokes on the "main" rskd the getwork command. In some cases (Depending on the getwork result
+ * and the pool configuration) notifies the miners
+ */
 static void *rootstock_update(void *arg)
 {
 	ckpool_t *ckp = (ckpool_t *)arg;
@@ -253,7 +257,8 @@ static server_instance_t *live_server(ckpool_t *ckp)
 	connsock_t *cs;
 	int i;
 
-	LOGDEBUG("Attempting to connect to bitcoind");
+	LOGDEBUG("Attempting to connect to rskd");
+	int attempts = 3;
 retry:
 	/* First find a server that is already flagged alive if possible
 	 * without blocking on server_alive() */
@@ -278,11 +283,21 @@ retry:
 	}
 	LOGWARNING("WARNING: No rskds active!");
 	sleep(5);
-	goto retry;
+	attempts--;
+	//cksleep_ms(20);
+	if (attempts>=0) {
+		LOGWARNING("No rskds active, retry %d more times", attempts);
+		goto retry;
+	} else {
+		LOGWARNING("No rskds active, no more retries");
+		goto failed;
+	}
 living:
 	cs = &alive->cs;
 	LOGINFO("Connected to rskd server %s:%s", cs->url, cs->port);
 	return alive;
+failed:
+	return NULL;
 }
 
 static void kill_server(server_instance_t *si)
@@ -312,6 +327,10 @@ static void clear_unix_msg(unix_msg_t **umsg)
 	}
 }
 
+/**
+ * Iterates forever looking for task reading a buffer of messages. If we get a "getWork" or "submitblock" msg
+ * we send that to the "main" rskd
+ */
 static void rootstock_loop(proc_instance_t *pi)
 {
 	server_instance_t *si = NULL, *old_si;
@@ -327,8 +346,16 @@ reconnect:
 	clear_unix_msg(&umsg);
 	old_si = si;
 	si = live_server(ckp);
-	if (!si)
-		goto out;
+	if (!si) {
+		LOGWARNING("Could not connect to rskd, empty queue");
+		do {
+			LOGWARNING("Empty 1 queue item");
+			clear_unix_msg(&umsg);
+			umsg = get_unix_msg(pi);
+		} while (umsg);
+		goto reconnect;
+		//goto out;
+	}
 	if (unlikely(!started)) {
 		started = true;
 		LOGWARNING("%s rootstock ready", ckp->name);
