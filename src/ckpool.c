@@ -264,6 +264,20 @@ static void *unix_receiver(void *arg)
 	return NULL;
 }
 
+/**
+ * Created for RSK.
+ * Similar to get_unix_msg() but assumes the thread already has the lock and does not wait for a msg to be added.
+ */
+unix_msg_t *get_unix_msg_no_lock_no_wait(proc_instance_t *pi)
+{
+	unix_msg_t *umsg;
+	umsg = pi->unix_msgs;
+	if (umsg)
+		DL_DELETE(pi->unix_msgs, umsg);
+
+	return umsg;
+}
+
 /* Get the next message in the receive queue, or wait up to 5 seconds for
  * the next message, returning NULL if no message is received in that time. */
 unix_msg_t *get_unix_msg(proc_instance_t *pi)
