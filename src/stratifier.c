@@ -30,6 +30,8 @@
 #include "connector.h"
 #include "generator.h"
 
+#include "rsktestconfig.h"
+
 #define MIN1	60
 #define MIN5	300
 #define MIN15	900
@@ -37,13 +39,6 @@
 #define HOUR6	21600
 #define DAY	86400
 #define WEEK	604800
-
-/* Use in development mode only */
-#define DEV_MODE_ON true
-/* Difficulty value that will be send to the miners */
-#define MINER_DIFF	0.005
-/* Difficulty value that will be used in block submission to BTC */
-#define BTC_CKPOOL_DIFF 0.1
 
 /* Consistent across all pool instances */
 static const char *workpadding = "000000800000000000000000000000000000000000000000000000000000000000000000000000000000000080020000";
@@ -5781,7 +5776,7 @@ static json_t *__stratum_notify(const workbase_t *wb, const bool clean)
 			json_deep_copy(wb->merkle_array),
 			wb->bbversion,
 			wb->nbit,
-			wb->ntime,
+			PERF_TEST_MODE_ON ? "572cea63" : wb->ntime,
 			clean,
 			"id", json_null());
 	return val;
@@ -7636,7 +7631,8 @@ void *stratifier(void *arg)
 	}
 
 	randomiser = time(NULL);
-	sdata->enonce1_64 = htole64(randomiser);
+	sdata->enonce1_64 = PERF_TEST_MODE_ON ? 0x2d5e3257 : htole64(randomiser);
+
 	/* Set the initial id to time as high bits so as to not send the same
 	 * id on restarts */
 	randomiser <<= 32;
