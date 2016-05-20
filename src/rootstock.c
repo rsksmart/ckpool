@@ -187,12 +187,13 @@ static void *rootstock_update(void *arg)
 	while (42) {
 		dealloc(buf);
 		buf = send_recv_proc(ckp->rootstock, "getwork");
-		if (buf && (strcmp(buf, rdata->lastblockhashmerge) || PERF_TEST_MODE_ON) && !cmdmatch(buf, "failed")) {
-			if (ckp->rsknotifypolicy == 1 && rdata->notify || ckp->rsknotifypolicy == 2) {
-				LOGWARNING("Rootstock: update %s", buf);
-				send_proc(ckp->stratifier, "update");
-			}
-		}
+	    if (buf && !cmdmatch(buf, "failed")) {
+	    	if (ckp->rsknotifypolicy == 2 && strcmp(buf, rdata->lastblockhashmerge) ||
+	    		ckp->rsknotifypolicy == 1 && rdata->notify) {
+	    		LOGWARNING("Rootstock: update %s", buf);
+	    		send_proc(ckp->stratifier, "update");
+	    	}
+	    }
 		cksleep_ms(ckp->rskpollperiod);
 	}
 	return NULL;
