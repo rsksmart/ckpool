@@ -77,7 +77,7 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	rpc_req = ckalloc(len);
 	sprintf(rpc_req, rsk_getwork_req, id);
 
-	val = json_rpc_call(cs, rpc_req);
+	val = json_rpc_call_timeout(cs, rpc_req, 3);
 	dealloc(rpc_req);
 	if (!val) {
 		LOGWARNING("%s:%s Failed to get valid json response to eth_getWork", cs->url, cs->port);
@@ -135,18 +135,18 @@ retry:
 	id = ++rdata->lastreqid;
 	rpc_req = ckalloc(len);
 	sprintf(rpc_req, rsk_processSPVProof_req, params, id);
-	val = json_rpc_call(cs, rpc_req);
+	val = json_rpc_call_timeout(cs, rpc_req, 3);
 	dealloc(rpc_req);
 	if (!val) {
 		LOGWARNING("%s:%s Failed to get valid json response to eth_processSPVProof", cs->url, cs->port);
-		if (++retries < 5)
+		if (++retries < 1)
 			goto retry;
 		return ret;
 	}
 	res_val = json_object_get(val, "result");
 	if (!res_val) {
 		LOGWARNING("Failed to get result in json response to eth_processSPVProof");
-		if (++retries < 5) {
+		if (++retries < 1) {
 			json_decref(val);
 			goto retry;
 		}
@@ -397,13 +397,7 @@ retry:
 			goto reconnect;
 		} else {
 			memcpy(rdata->blockhashmergebin, rgw->blockhashmergebin, 32);
-
-			//printf("ROOTSTOCK:RSK_LOOP -- TARGET FROM RGW 2: %s\n", rgw->target);
-
 			strcpy(rdata->target, rgw->target);
-
-			//printf("ROOTSTOCK:RSK_LOOP -- TARGET FROM RDATA: %s\n", rdata->target);
-
 			rdata->minerfees = rgw->minerfees;
 			rdata->notify = rgw->notify;
 			strcpy(rdata->blockhashmerge, rgw->blockhashmerge);

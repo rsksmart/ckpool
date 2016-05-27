@@ -816,10 +816,11 @@ static const char *rpc_method(const char *rpc_req)
 }
 
 /* All of these calls are made to bitcoind which prefers open/close instead
- * of persistent connections so cs->fd is always invalid. */
-json_t *json_rpc_call(connsock_t *cs, const char *rpc_req)
+ * of persistent connections so cs->fd is always invalid.
+ * Rootstock: Some calls go to rskd
+ * */
+json_t *json_rpc_call_timeout(connsock_t *cs, const char *rpc_req, float timeout)
 {
-	float timeout = RPC_TIMEOUT;
 	char *http_req = NULL;
 	json_error_t err_val;
 	json_t *val = NULL;
@@ -925,6 +926,12 @@ out:
 	cksem_post(&cs->sem);
 	return val;
 }
+
+json_t *json_rpc_call(connsock_t *cs, const char *rpc_req)
+{
+	return json_rpc_call_timeout(cs, rpc_req, RPC_TIMEOUT);
+}
+
 
 static void terminate_oldpid(const ckpool_t *ckp, proc_instance_t *pi, const pid_t oldpid)
 {
