@@ -117,9 +117,9 @@ out:
 	return ret;
 }
 
-static const char* rsk_processSPVProof_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr__processSPVProof\", \"params\": [\"%s\"], \"id\": %d}\n";
+static const char* rsk_submitBitcoinBlock_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_submitBitcoinBlock\", \"params\": [\"%s\"], \"id\": %d}\n";
 
-static bool rsk_processSPVProof(connsock_t *cs, char *params)
+static bool rsk_submitBitcoinBlock(connsock_t *cs, char *params)
 {
 	ckpool_t *ckp = cs->ckp;
 	rdata_t *rdata = ckp->rdata;
@@ -130,22 +130,22 @@ static bool rsk_processSPVProof(connsock_t *cs, char *params)
 	char *rpc_req;
 	int id;
 
-	len = 76 + strlen(params) + 16; // len(rsk_processSPVProof_req) + len(params) + len(id)
+	len = 76 + strlen(params) + 16; // len(rsk_submitBitcoinBlock_req) + len(params) + len(id)
 retry:
 	id = ++rdata->lastreqid;
 	rpc_req = ckalloc(len);
-	sprintf(rpc_req, rsk_processSPVProof_req, params, id);
+	sprintf(rpc_req, rsk_submitBitcoinBlock_req, params, id);
 	val = json_rpc_call_timeout(cs, rpc_req, 3);
 	dealloc(rpc_req);
 	if (!val) {
-		LOGWARNING("%s:%s Failed to get valid json response to mnr_processSPVProof", cs->url, cs->port);
+		LOGWARNING("%s:%s Failed to get valid json response to mnr_submitBitcoinBlock", cs->url, cs->port);
 		if (++retries < 1)
 			goto retry;
 		return ret;
 	}
 	res_val = json_object_get(val, "result");
 	if (!res_val) {
-		LOGWARNING("Failed to get result in json response to mnr_processSPVProof");
+		LOGWARNING("Failed to get result in json response to mnr_submitBitcoinBlock");
 		if (++retries < 1) {
 			json_decref(val);
 			goto retry;
@@ -164,7 +164,7 @@ retry:
 			goto out;
 		}
 	}
-	LOGWARNING("mnr_processSPVProof ACCEPTED!");
+	LOGWARNING("mnr_submitBitcoinBlock ACCEPTED!");
 	ret = true;
 out:
 	json_decref(val);
@@ -411,7 +411,7 @@ retry:
 		tv_t finish_tv;
 		LOGINFO("Submitting rootstock block data!");
 		tv_time(&start_tv);
-		ret = rsk_processSPVProof(cs, buf + 12 + 64 + 1);
+		ret = rsk_submitBitcoinBlock(cs, buf + 12 + 64 + 1);
 		tv_time(&finish_tv);
 		{
 			struct tm start_tm;
@@ -421,7 +421,7 @@ retry:
 			localtime_r(&(start_tv.tv_sec), &start_tm);
 			localtime_r(&(finish_tv.tv_sec), &finish_tm);
 			memset(buf + 12 + 64, 0, 1);
-			LOGINFO("ROOTSTOCK: processSPVProof: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
+			LOGINFO("ROOTSTOCK: submitBitcoinBlock: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
 				start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
 				start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
 				finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,

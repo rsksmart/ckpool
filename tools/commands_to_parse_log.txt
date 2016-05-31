@@ -3,7 +3,7 @@ Commands to parse log
 
 grep ": getblocktemplate:" ckpool.log | wc -l
 
-grep ": processSPVProof:" ckpool.log | wc -l
+grep ": submitBitcoinBlock:" ckpool.log | wc -l
 
 grep ": submitblock:" ckpool.log | wc -l
 
