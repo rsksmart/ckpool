@@ -69,7 +69,6 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	double minerfees = 0.0;
 	const char* strminerfees;
 	const char* parentblockhash;
-	char parentblockhashbin[36];
 	int notify = 0;
 	int id;
 
@@ -98,15 +97,13 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 
 	parentblockhash = json_string_value(json_object_get(res_val, "parentBlockHash"));
 
-	strncpy(rgw->blockhashmerge, blockhashmerge, CHAR_ARRAY_64_COPY_SIZE);
+	strncpy(rgw->blockhashmerge, blockhashmerge+2, CHAR_ARRAY_64_COPY_SIZE);
 	b642bin(blockhashmergebin, blockhashmerge, 32);
 	memcpy(rgw->blockhashmergebin, blockhashmergebin, 32);
 
-	strncpy(rgw->target, target, CHAR_ARRAY_64_COPY_SIZE);
+	strncpy(rgw->target, target+2, CHAR_ARRAY_64_COPY_SIZE);
 
-	strncpy(rgw->parentblockhash, parentblockhash, CHAR_ARRAY_64_COPY_SIZE);
-	b642bin(parentblockhashbin, parentblockhash, 32);
-	memcpy(rgw->parentblockhashbin, parentblockhashbin, 32);
+	strncpy(rgw->parentblockhash, parentblockhash+2, CHAR_ARRAY_64_COPY_SIZE);
 
 	rgw->minerfees = minerfees;
 	rgw->notify = notify;
@@ -401,7 +398,6 @@ retry:
 			rdata->minerfees = rgw->minerfees;
 			rdata->notify = rgw->notify;
 			strcpy(rdata->blockhashmerge, rgw->blockhashmerge);
-			memcpy(rdata->parentblockhashbin, rgw->parentblockhashbin, 32);
 			strcpy(rdata->parentblockhash, rgw->parentblockhash);
 			send_unix_msg(umsg->sockd, rdata->blockhashmerge);
 		}
