@@ -98,7 +98,7 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	parentblockhash = json_string_value(json_object_get(res_val, "parentBlockHash"));
 
 	strncpy(rgw->blockhashmerge, blockhashmerge+2, CHAR_ARRAY_64_COPY_SIZE);
-	b642bin(blockhashmergebin, blockhashmerge, 32);
+	hex2bin(blockhashmergebin, blockhashmerge+2, 32);
 	memcpy(rgw->blockhashmergebin, blockhashmergebin, 32);
 
 	strncpy(rgw->target, target+2, CHAR_ARRAY_64_COPY_SIZE);
