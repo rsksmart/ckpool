@@ -94,7 +94,7 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 
 	strminerfees = json_string_value(json_object_get(res_val, "feesPaidToMiner"));
 	minerfees = atof(strminerfees);
-	notify = json_is_true(json_object_get(res_val, "notifyFlag"));
+	notify = json_is_true(json_object_get(res_val, "notify"));
 
 	parentblockhash = json_string_value(json_object_get(res_val, "parentBlockHash"));
 
