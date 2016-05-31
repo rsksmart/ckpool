@@ -53,7 +53,7 @@ size_t b642bin(char* dest, const char* src, size_t size)
 	return res;
 }
 
-static const char *rsk_getwork_req = "{\"jsonrpc\": \"2.0\", \"method\": \"eth_getWork\", \"params\": [], \"id\": %d}\n";
+static const char *rsk_getwork_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_getWork\", \"params\": [], \"id\": %d}\n";
 
 bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 {
@@ -80,12 +80,12 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	val = json_rpc_call_timeout(cs, rpc_req, 3);
 	dealloc(rpc_req);
 	if (!val) {
-		LOGWARNING("%s:%s Failed to get valid json response to eth_getWork", cs->url, cs->port);
+		LOGWARNING("%s:%s Failed to get valid json response to mnr_getWork", cs->url, cs->port);
 		return ret;
 	}
 	res_val = json_object_get(val, "result");
 	if (!res_val) {
-		LOGWARNING("Failed to get result in json response to eth_getWork");
+		LOGWARNING("Failed to get result in json response to mnr_getWork");
 		goto out;
 	}
 
@@ -117,7 +117,7 @@ out:
 	return ret;
 }
 
-static const char* rsk_processSPVProof_req = "{\"jsonrpc\": \"2.0\", \"method\": \"eth_processSPVProof\", \"params\": [\"%s\"], \"id\": %d}\n";
+static const char* rsk_processSPVProof_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr__processSPVProof\", \"params\": [\"%s\"], \"id\": %d}\n";
 
 static bool rsk_processSPVProof(connsock_t *cs, char *params)
 {
@@ -138,14 +138,14 @@ retry:
 	val = json_rpc_call_timeout(cs, rpc_req, 3);
 	dealloc(rpc_req);
 	if (!val) {
-		LOGWARNING("%s:%s Failed to get valid json response to eth_processSPVProof", cs->url, cs->port);
+		LOGWARNING("%s:%s Failed to get valid json response to mnr_processSPVProof", cs->url, cs->port);
 		if (++retries < 1)
 			goto retry;
 		return ret;
 	}
 	res_val = json_object_get(val, "result");
 	if (!res_val) {
-		LOGWARNING("Failed to get result in json response to eth_processSPVProof");
+		LOGWARNING("Failed to get result in json response to mnr_processSPVProof");
 		if (++retries < 1) {
 			json_decref(val);
 			goto retry;
@@ -164,7 +164,7 @@ retry:
 			goto out;
 		}
 	}
-	LOGWARNING("eth_processSPVProof ACCEPTED!");
+	LOGWARNING("mnr_processSPVProof ACCEPTED!");
 	ret = true;
 out:
 	json_decref(val);
