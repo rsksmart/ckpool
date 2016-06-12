@@ -1,0 +1,20 @@
+{
+  "name": "ckpoolAutomationTests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "framework for running ckpool tests and obtaining statistics",
+  "main": "build.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ajgenesis": "0.0.14",
+    "scp2": "^0.2.2",
+    "simpleargs": "0.0.3",
+    "simpleasync": "0.0.8",
+    "ssh2": "^0.5.0",
+    "stats-lite": "^2.0.1"
+  }
+}

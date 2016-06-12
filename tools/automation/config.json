@@ -1,0 +1,90 @@
+{
+    "ckpool": 
+    {
+        "btcd" :  [
+            {
+                "url" : "192.168.200.141:32591",
+                "auth" : "admin",
+                "pass" : "admin",
+                "notify" : false
+            }
+        ],
+        "rskd" :  [
+            {
+                "url" : "192.168.200.141:4444",
+                "auth" : "user",
+                "pass" : "pass"
+            }
+        ],
+        "blockPoll" : 100,
+        "serverUrl" : [
+            "192.168.200.139:3333",
+            "127.0.0.1:3333"
+        ],
+        "logDir" : "logs",
+        "rskPollPeriod" : 500,
+        "rskNotifyPolicy": 1
+    },
+
+    "deploy": 
+    { 
+        "artifacts":
+        {
+            "minerd": "rootstock-001",
+            "bitcoind": "rootstock-002",
+            "rootstockJ": "rootstock-002",
+            "ckpool": "rootstock-003"
+        },
+        "directory": "automation/"
+    },
+
+    "ssh": 
+    {
+        "privateKeyDirectory": "/Users/tincho/.ssh/id_rsa"
+    },
+    
+    "machines": [
+        {
+            "name": "rootstock-001",
+            "private": {
+                "ip": "192.168.200.124",
+                "port": 22
+                },
+            "public": {
+                "ip": "rootstock.zapto.org",
+                "port": 2221
+            }
+        },
+        {
+            "name": "rootstock-002",
+            "private": {
+                "ip": "192.168.200.141",
+                "port": 22
+                },
+            "public": {
+                "ip": "rootstock.zapto.org",
+                "port": 2222
+            }
+        },
+        {
+            "name": "rootstock-003",
+            "private": {
+                "ip": "192.168.200.139",
+                "port": 22
+                },
+            "public": {
+                "ip": "rootstock.zapto.org",
+                "port": 2223
+            }
+        }
+    ],
+
+    "testcases": [
+        {
+            "mergeMining": false,
+            "miners": 5,
+            "duration": 2
+        }
+    ]
+}
+
