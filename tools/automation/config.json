@@ -3,7 +3,7 @@
     {
         "btcd" :  [
             {
-                "url" : "192.168.200.141:32591",
+                "url" : "",
                 "auth" : "admin",
                 "pass" : "admin",
                 "notify" : false
@@ -11,16 +11,13 @@
         ],
         "rskd" :  [
             {
-                "url" : "192.168.200.141:4444",
+                "url" : "",
                 "auth" : "user",
                 "pass" : "pass"
             }
         ],
         "blockPoll" : 100,
-        "serverUrl" : [
-            "192.168.200.139:3333",
-            "127.0.0.1:3333"
-        ],
+        "serverUrl" : [ ],
         "logDir" : "logs",
         "rskPollPeriod" : 500,
         "rskNotifyPolicy": 1
@@ -81,9 +78,16 @@
 
     "testcases": [
         {
-            "mergeMining": false,
+            "mergeMining": true,
             "miners": 5,
-            "duration": 2
+            "duration": 2,
+            "ckpool": {
+                "sourceCodeDirectory": "",
+                "devModeOn": true,
+                "minerDiff": 0.01,
+                "btcCkpoolDiff": 0.2,
+                "rskCkpoolDiff": 0.01 
+            }
         }
     ]
 }

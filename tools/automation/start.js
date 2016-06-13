@@ -134,7 +134,7 @@ function startCkpool(testCase) {
 
     async().exec(function (next) {
 
-        var ckpoolVersion = config.testcases.mergeMining ? "ckpool_rsk" : "ckpool_original";
+        var ckpoolVersion = config.testcases[0].mergeMining ? "ckpool_rsk" : "ckpool_original";
 
         var cmd = "cd ~/{0}/ && ".format(path.join(artifactLocation, "run"));
         cmd += "rm -f -r {0} && ".format(config.ckpool.logDir);
