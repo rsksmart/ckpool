@@ -175,7 +175,8 @@ function deployCkpool() {
         if (argv.quick)
             return next(null, null);
 
-        var cmd = "chmod +x ./" + artifactDirectory + "/" + artifactName + "_original";
+        var ckpoolVersion = config.testcases.mergeMining ? "ckpool_rsk" : "ckpool_original";
+        var cmd = "chmod +x ./" + artifactDirectory + "/" + ckpoolVersion;
         console.log("executing remote comand", cmd);
 
         utils.executeRemote(machine, cmd, next);

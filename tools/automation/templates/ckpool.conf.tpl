@@ -3,7 +3,7 @@
     "rskd" : ${JSON.stringify(rskd)},
     "upstream" : "main.ckpool.org:3336",
     "btcaddress" : "n19XNjTfYwLx3YbQk7GG2tLjzcqUeWP42D",
-    "btcsig" : "/mined by ck/",
+    "btcsig" : "/mined by rsk/",
     "blockpoll" : ${blockPoll},
     "nonce1length" : 4,
     "nonce2length" : 8,

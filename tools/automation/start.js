@@ -134,9 +134,11 @@ function startCkpool(testCase) {
 
     async().exec(function (next) {
 
+        var ckpoolVersion = config.testcases.mergeMining ? "ckpool_rsk" : "ckpool_original";
+
         var cmd = "cd ~/{0}/ && ".format(path.join(artifactLocation, "run"));
-        cmd += "rm -f -r logs && ";
-        cmd += "tmux new -d -s ckp './ckpool_original -A -l 7 -c conf/ckpool.conf'";
+        cmd += "rm -f -r {0} && ".format(config.ckpool.logDir);
+        cmd += "tmux new -d -s ckp './{0} -A -l 7 -c conf/ckpool.conf'".format(ckpoolVersion);
 
         console.log("executing remote command", cmd);
 
