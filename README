@@ -1,3 +1,5 @@
+[![CircleCI](https://circleci.com/gh/rootstock/ckpool.svg?style=svg)](https://circleci.com/gh/rootstock/ckpool)
+
 CKPOOL + CKDB + libckpool by Con Kolivas and Andrew Smith.
 
 Ultra low overhead massively scalable multi-process, multi-threaded modular
