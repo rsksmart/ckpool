@@ -1,16 +1,4 @@
 ## Customize the test machine
-machine:
-
-checkout:
-
-dependencies:
-
-database:
-
 test:
   override:
     - echo "test"
-
-deployment:
-
-notify:
