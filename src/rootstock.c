@@ -364,8 +364,6 @@ reconnect:
 
 	rgw = si->data;
 
-	//printf("ROOTSTOCK:RSK_LOOP -- TARGET FROM RGW 1: %s\n", rgw->target);
-
 	cs = &si->cs;
 	if (!old_si)
 		LOGWARNING("Connected to rskd: %s:%s", cs->url, cs->port);
