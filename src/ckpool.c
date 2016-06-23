@@ -849,7 +849,7 @@ json_t *json_rpc_call(connsock_t *cs, const char *rpc_req)
 		 "Content-Length: %d\n\n%s",
 		 cs->auth, cs->url, cs->port, len, rpc_req);
 
-	LOGINFO("ROOTSTOCK: json_rpc_call: %p, %s", http_req, rpc_req);
+	LOGINFO_RSK("ROOTSTOCK: json_rpc_call: %p, %s", http_req, rpc_req);
 
 	len = strlen(http_req);
 	tv_time(&stt_tv);
@@ -893,7 +893,7 @@ json_t *json_rpc_call(connsock_t *cs, const char *rpc_req)
 			   elapsed, __func__, rpc_method(rpc_req));
 	}
 
-	LOGINFO("ROOTSTOCK: json_rpc_reply: %p, %s", http_req, cs->buf);
+	LOGINFO_RSK("ROOTSTOCK: json_rpc_reply: %p, %s", http_req, cs->buf);
 
 	val = json_loads(cs->buf, 0, &err_val);
 	if (!val) {
