@@ -25,6 +25,7 @@ class LogFile:
         self.error_output = open("error.log", "w+") if "error.log" else None
         self.summary = summary
         self.list_getblocktemplates = odict() # getblocktemplate calls
+        self.list_getworks = odict() # getwork calls
         self.server_calls = {}      # calls to bitcoind / rskd
         self.client_calls = {}      # calls to clients
         self.client_jobs = {}       # jobs received from clients
@@ -116,6 +117,14 @@ class LogFile:
             finish_time = message.fixed[1]
             work_id = message.fixed[2]
             self.process_operation('getblocktemplate', work_id, start_time, '', finish_time)
+            return
+
+        elif operation == "getwork":
+            message = parse.parse("{:ti}, {:ti}, {}", data)
+            start_time = message.fixed[0]
+            finish_time = message.fixed[1]
+            work_id = message.fixed[2]
+            self.process_operation('getwork', work_id, start_time, '', finish_time)
             return
 
         elif operation == "blocksolve":
@@ -214,6 +223,10 @@ class LogFile:
             finish_time = args[0]
             self.log_action('getblocktemplate', time, delta_ms(time, finish_time), id)
 
+        elif operation == 'getwork':
+            finish_time = args[0]
+            self.log_action('getwork', time, delta_ms(time, finish_time), id)
+
         elif operation == 'blocksolve':
             jobid, nonce, nonce2, blockhash = data
             if jobid in self.client_jobs and nonce in self.client_jobs[jobid]:
@@ -286,6 +299,29 @@ class LogFile:
                 del self.notify_pending[id]
                 self.list_getblocktemplates[id] = start, duration, id, clients, last_client_start
 
+        elif method == 'getwork':
+            if id in self.list_getworks:
+                print("Error: getwork alread received {} at {}".format(id, start))
+
+            if len(self.list_getworks) > 3:
+                job_id = next(iter(self.list_getworks))
+                prev_start, prev_duration, prev_id, prev_clients, last_client_start = self.list_getworks[job_id]
+                last_client = delta_ms(prev_start, last_client_start) - prev_duration if len(prev_clients) > 0 else '--'
+                # We are not interested in RSK's getwork performance
+                #self.print_summary("getwork, {}, {}, {}, {}, {}".format(prev_start, prev_duration, prev_id, len(prev_clients), last_client))
+                del self.list_getworks[job_id]
+
+            self.list_getworks[id] = start, duration, id, {}, None
+            if id in self.notify_pending:
+                clients = {}
+                last_client_start = None
+                for client_id, client_start in self.notify_pending[id]:
+                    clients[client_id] = client_start
+                    if last_client_start is None or delta_ms(last_client_start, client_start) <= args.max_notify_delta:
+                        last_client_start = client_start
+                del self.notify_pending[id]
+                self.list_getworks[id] = start, duration, id, clients, last_client_start
+
         elif method == 'mining.notify':
             [job_id, client_id] = id.split(":")
             if job_id in self.list_getblocktemplates:
@@ -295,6 +331,13 @@ class LogFile:
                     if last_client_start is None or delta_ms(last_client_start, start) <= args.max_notify_delta:
                         last_client_start = start
                 self.list_getblocktemplates[job_id] = prev_start, prev_duration, prev_id, prev_clients, last_client_start
+            elif job_id in self.list_getworks:
+                prev_start, prev_duration, prev_id, prev_clients, last_client_start = self.list_getworks[job_id]
+                if client_id not in prev_clients:
+                    prev_clients[client_id] = start
+                    if last_client_start is None or delta_ms(last_client_start, start) <= args.max_notify_delta:
+                        last_client_start = start
+                self.list_getworks[job_id] = prev_start, prev_duration, prev_id, prev_clients, last_client_start
             else:
                 pendings = self.notify_pending.setdefault(job_id, [])
                 pendings += [(client_id, start)]
@@ -317,7 +360,15 @@ class LogFile:
             last_client = delta_ms(prev_start, last_client_start) - prev_duration if len(prev_clients) > 0 else '--'
             self.print_summary("getblocktemplate, {}, {}, {}, {}, {}".format(prev_start, prev_duration, prev_id, len(prev_clients), last_client))
 
-            self.list_getblocktemplates = odict()
+        self.list_getblocktemplates = odict()
+
+        for job_id, data in self.list_getworks.items():
+            prev_start, prev_duration, prev_id, prev_clients, last_client_start = data
+            last_client = delta_ms(prev_start, last_client_start) - prev_duration if len(prev_clients) > 0 else '--'
+            # We are not interested in RSK's getwork performance
+            #self.print_summary("getwork, {}, {}, {}, {}, {}".format(prev_start, prev_duration, prev_id, len(prev_clients), last_client))
+
+        self.list_getworks = odict()
 
         self.submit_jobs = None
 

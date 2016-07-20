@@ -268,6 +268,9 @@ struct ckpool_instance {
 	void *rdata;
 	void *sdata;
 	void *cdata;
+
+	char *gbtresultcache;
+
 };
 
 enum stratum_msgtype {

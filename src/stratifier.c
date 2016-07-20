@@ -1138,6 +1138,7 @@ struct update_req {
 	pthread_t *pth;
 	ckpool_t *ckp;
 	int prio;
+	bool from_rsk;
 };
 
 static void broadcast_ping(sdata_t *sdata);
@@ -1350,6 +1351,7 @@ static void *do_update(void *arg)
 	bool new_rootstock = false;
 	tv_t start_tv;
 	tv_t finish_tv;
+	bool executed_gbt;
 
 	pthread_detach(pthread_self());
 	rename_proc("updater");
@@ -1365,23 +1367,36 @@ static void *do_update(void *arg)
 	} else
 		cksem_wait(&sdata->update_sem);
 retry:
-	tv_time(&start_tv);
-	buf = send_recv_generator(ckp, "getbase", prio);
-	tv_time(&finish_tv);
-	if (unlikely(!buf)) {
-		LOGNOTICE("Get base in update_base delayed due to higher priority request");
-		goto out;
-	}
-	if (unlikely(cmdmatch(buf, "failed"))) {
-		if (retries++ < 5 || prio == GEN_PRIORITY) {
-			LOGWARNING("Generator returned failure in update_base, retry #%d", retries);
-			goto retry;
+
+	executed_gbt = false;
+	if (! ur->from_rsk || !ckp->gbtresultcache) {
+		executed_gbt = true;
+		tv_time(&start_tv);
+		buf = send_recv_generator(ckp, "getbase", prio);
+		tv_time(&finish_tv);
+		if (unlikely(!buf)) {
+			LOGNOTICE("Get base in update_base delayed due to higher priority request");
+			goto out;
 		}
-		LOGWARNING("Generator failed in update_base after retrying");
-		goto out;
+		if (unlikely(cmdmatch(buf, "failed"))) {
+			if (retries++ < 5 || prio == GEN_PRIORITY) {
+				LOGWARNING("Generator returned failure in update_base, retry #%d", retries);
+				goto retry;
+			}
+			LOGWARNING("Generator failed in update_base after retrying");
+			goto out;
+		}
+		if (unlikely(retries))
+			LOGWARNING("Generator succeeded in update_base after retrying");
+		if (ckp->gbtresultcache) {
+			dealloc(ckp->gbtresultcache);
+		}
+		ckp->gbtresultcache = ckzalloc(strlen(buf)+1);
+		memcpy(ckp->gbtresultcache,buf, strlen(buf)+1);
+	} else {
+		buf = ckzalloc(strlen(ckp->gbtresultcache)+1);
+		memcpy(buf, ckp->gbtresultcache, strlen(ckp->gbtresultcache)+1);
 	}
-	if (unlikely(retries))
-		LOGWARNING("Generator succeeded in update_base after retrying");
 
 	wb = ckzalloc(sizeof(workbase_t));
 	wb->ckp = ckp;
@@ -1433,7 +1448,7 @@ retry:
 	/* Reset the update time to avoid stacked low priority notifies. Bring
 	 * forward the next notify in case of a new block. */
 	now_t = time(NULL);
-	if (new_block || new_rootstock)
+	if (new_block)
 		now_t -= ckp->update_interval / 2;
 	sdata->update_time = now_t;
 
@@ -1442,7 +1457,8 @@ retry:
 		LOGINFO("ROOTSTOCK: newblock: %s, %s", wb->idstring, sdata->lastswaphash);
 	}
 
-	{
+	if (executed_gbt) {
+		// Bitcoin's gbt was invoked.   
 		struct tm start_tm;
 		int start_ms = (int)(start_tv.tv_usec / 1000);
 		struct tm finish_tm;
@@ -1455,6 +1471,9 @@ retry:
 			finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
 			finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
 			wb->idstring);
+	} else {
+		// Bitcoin's gbt was not invoked, this was originated by RSK getwork.
+		LOGINFO("ROOTSTOCK: getwork: 0001-01-01 00:00:00.000, 0001-01-01 00:00:00.000, %s", wb->idstring);
 	}
 
 	stratum_broadcast_update(sdata, wb, new_block || new_rootstock);
@@ -1911,7 +1930,7 @@ out:
 	free(enonce1);
 }
 
-static void update_base(ckpool_t *ckp, const int prio)
+static void update_base(ckpool_t *ckp, const int prio, bool from_rsk)
 {
 	struct update_req *ur = ckalloc(sizeof(struct update_req));
 	pthread_t *pth = ckalloc(sizeof(pthread_t));
@@ -1919,6 +1938,7 @@ static void update_base(ckpool_t *ckp, const int prio)
 	ur->pth = pth;
 	ur->ckp = ckp;
 	ur->prio = prio;
+	ur->from_rsk = from_rsk;
 	create_pthread(pth, do_update, ur);
 }
 
@@ -3244,7 +3264,7 @@ static void block_solve(ckpool_t *ckp, const char *blockhash)
 	json_t *val;
 
 	if (!ckp->node)
-		update_base(ckp, GEN_PRIORITY);
+		update_base(ckp, GEN_PRIORITY, false);
 
 	ts_realtime(&ts_now);
 	sprintf(cdfield, "%lu,%lu", ts_now.tv_sec, ts_now.tv_nsec);
@@ -4037,7 +4057,8 @@ retry:
 			if (!ckp->proxy) {
 				LOGDEBUG("%ds elapsed in strat_loop, updating gbt base",
 					 ckp->update_interval);
-				update_base(ckp, GEN_NORMAL);
+				// ckp->update_interval time passed since the last ckpool update to miners. Do a gbt and update miners
+				update_base(ckp, GEN_NORMAL, false);
 			} else if (!ckp->passthrough) {
 				LOGDEBUG("%ds elapsed in strat_loop, pinging miners",
 					 ckp->update_interval);
@@ -4133,7 +4154,10 @@ retry:
 	Close(umsg->sockd);
 	LOGDEBUG("Stratifier received request: %s", buf);
 	if (cmdmatch(buf, "update")) {
-		update_base(ckp, GEN_PRIORITY);
+		update_base(ckp, GEN_PRIORITY, false);
+	} else if (cmdmatch(buf, "rskupdate")) {
+		LOGWARNING("Invoking rskupdate");
+		update_base(ckp, GEN_PRIORITY, true);
 	} else if (cmdmatch(buf, "subscribe")) {
 		/* Proxifier has a new subscription */
 		update_subscribe(ckp, buf);
@@ -4198,7 +4222,7 @@ static void *blockupdate(void *arg)
 		if (buf && cmdmatch(buf, "notify"))
 			cksleep_ms(5000);
 		else if (buf && strcmp(buf, sdata->lastswaphash) && !cmdmatch(buf, "failed"))
-			update_base(ckp, GEN_PRIORITY);
+			update_base(ckp, GEN_PRIORITY, false);
 		else
 			cksleep_ms(ckp->blockpoll);
 	}

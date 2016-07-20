@@ -188,7 +188,7 @@ static void *rootstock_update(void *arg)
 	    	if (ckp->rsknotifypolicy == 2 && strcmp(buf, rdata->lastblockhashmerge) ||
 	    		ckp->rsknotifypolicy == 1 && rdata->notify) {
 	    		LOGWARNING("Rootstock: update %s", buf);
-	    		send_proc(ckp->stratifier, "update");
+	    		send_proc(ckp->stratifier, "rskupdate");
 	    	}
 	    }
 		cksleep_ms(ckp->rskpollperiod);
