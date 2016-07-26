@@ -283,21 +283,25 @@ class LogFile:
 
             if len(self.list_getblocktemplates) > 3:
                 job_id = next(iter(self.list_getblocktemplates))
-                prev_start, prev_duration, prev_id, prev_clients, last_client_start = self.list_getblocktemplates[job_id]
+                prev_start, prev_duration, prev_id, prev_clients, first_client_start, last_client_start = self.list_getblocktemplates[job_id]
                 last_client = delta_ms(prev_start, last_client_start) - prev_duration if len(prev_clients) > 0 else '--'
-                self.print_summary("getblocktemplate, {}, {}, {}, {}, {}".format(prev_start, prev_duration, prev_id, len(prev_clients), last_client))
+                delta_first_last_client = delta_ms(first_client_start, last_client_start) if len(prev_clients) > 0 else '--'
+                self.print_summary("getblocktemplate, {}, {}, {}, {}, {}, {}".format(prev_start, prev_duration, prev_id, len(prev_clients), last_client, delta_first_last_client))
                 del self.list_getblocktemplates[job_id]
 
-            self.list_getblocktemplates[id] = start, duration, id, {}, None
+            self.list_getblocktemplates[id] = start, duration, id, {}, None, None
             if id in self.notify_pending:
                 clients = {}
+                first_client_start = None
                 last_client_start = None
                 for client_id, client_start in self.notify_pending[id]:
                     clients[client_id] = client_start
                     if last_client_start is None or delta_ms(last_client_start, client_start) <= args.max_notify_delta:
                         last_client_start = client_start
+                    if first_client_start is None:
+                        first_client_start = start                        
                 del self.notify_pending[id]
-                self.list_getblocktemplates[id] = start, duration, id, clients, last_client_start
+                self.list_getblocktemplates[id] = start, duration, id, clients, first_client_start, last_client_start
 
         elif method == 'getwork':
             if id in self.list_getworks:
@@ -325,12 +329,14 @@ class LogFile:
         elif method == 'mining.notify':
             [job_id, client_id] = id.split(":")
             if job_id in self.list_getblocktemplates:
-                prev_start, prev_duration, prev_id, prev_clients, last_client_start = self.list_getblocktemplates[job_id]
+                prev_start, prev_duration, prev_id, prev_clients, first_client_start, last_client_start = self.list_getblocktemplates[job_id]
                 if client_id not in prev_clients:
                     prev_clients[client_id] = start
                     if last_client_start is None or delta_ms(last_client_start, start) <= args.max_notify_delta:
                         last_client_start = start
-                self.list_getblocktemplates[job_id] = prev_start, prev_duration, prev_id, prev_clients, last_client_start
+                    if first_client_start is None:
+                        first_client_start = start                        
+                self.list_getblocktemplates[job_id] = prev_start, prev_duration, prev_id, prev_clients, first_client_start, last_client_start
             elif job_id in self.list_getworks:
                 prev_start, prev_duration, prev_id, prev_clients, last_client_start = self.list_getworks[job_id]
                 if client_id not in prev_clients:
@@ -356,9 +362,10 @@ class LogFile:
 
     def flush_info(self):
         for job_id, data in self.list_getblocktemplates.items():
-            prev_start, prev_duration, prev_id, prev_clients, last_client_start = data
+            prev_start, prev_duration, prev_id, prev_clients, first_client_start, last_client_start = data
             last_client = delta_ms(prev_start, last_client_start) - prev_duration if len(prev_clients) > 0 else '--'
-            self.print_summary("getblocktemplate, {}, {}, {}, {}, {}".format(prev_start, prev_duration, prev_id, len(prev_clients), last_client))
+            delta_first_last_client = delta_ms(first_client_start, last_client_start) if len(prev_clients) > 0 else '--'
+            self.print_summary("getblocktemplate, {}, {}, {}, {}, {}, {}".format(prev_start, prev_duration, prev_id, len(prev_clients), last_client, delta_first_last_client))
 
         self.list_getblocktemplates = odict()
 
