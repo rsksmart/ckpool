@@ -31,6 +31,7 @@ class LogFile:
         self.client_jobs = {}       # jobs received from clients
         self.submit_jobs = {}       # jobs sent to bitcoind
         self.notify_pending = odict()    # mining.notify without a getblocktemplate
+        self.client_difficulty = {} # current difficulty for each client
 
     def parse(self):
         """Parse log file"""
@@ -206,6 +207,8 @@ class LogFile:
                 if method == 'mining.notify':
                     jobid = self.notify_jobid(self.client_calls[id][2])
                     self.log_action('mining.notify', start_time, delta_ms(start_time, time), ":".join([jobid, str(client_id)]))
+                elif method == 'mining.set_difficulty':
+                    self.client_difficulty[client_id] = self.get_difficulty(self.client_calls[id][2])
 
                 del self.client_calls[id]
             else:
@@ -217,7 +220,7 @@ class LogFile:
             if method == 'mining.submit':
                 jobid, nonce = self.submit_jobid(data)
                 self.client_jobs.setdefault(jobid, {})[nonce] = (jobid, nonce, time)
-                self.log_action(method, time, 0.0, ":".join([jobid, nonce]))
+                self.log_action(method, time, 0.0, ":".join([jobid, nonce, str(self.client_difficulty[id])]))
 
         elif operation == 'getblocktemplate':
             finish_time = args[0]
@@ -449,6 +452,16 @@ class LogFile:
         except:
             print("Error: Failed to parse submit: |{}|".format(data))
             raise
+
+    def get_difficulty(self, data):
+        """Recover the difficulty for a mining.set_difficulty message"""
+        try:
+            message = json.loads(data)
+            return message['params'][0]
+        except:
+            print("Error: Failed to parse notification: |{}|".format(data))
+            raise
+
 
 
 def main():
