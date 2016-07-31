@@ -5,6 +5,6 @@ grep ": getblocktemplate:" ckpool.log | wc -l
 
 grep ": submitBitcoinBlock:" ckpool.log | wc -l
 
-grep ": submitblock:" ckpool.log | wc -l
+grep "] BLOCK ACCEPTED" ckpool.log | wc -l
 
 grep "mining.submit" ckpool.log | wc -l

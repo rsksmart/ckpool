@@ -60,9 +60,9 @@ function processResults() {
 
         cmd += "echo 'shares, blocks submitted to BTC, blocks submitted to RSK, getBlockTemplate' > {0} && ".format(outputFileName);
 
-        cmd += 'echo -n "$(grep "mining.submit" ckpool.log | wc -l)," >> {1} &&'.format(ckpoolLogLocation, outputFileName);
-        cmd += 'echo -n "$(grep ": submitblock:" {0} | wc -l)," >> {1} && '.format(ckpoolLogLocation, outputFileName);
-        cmd += 'echo -n "$(grep ": processSPVProof:" ckpool.log | wc -l)," >> {1} && '.format(ckpoolLogLocation, outputFileName);
+        cmd += 'echo -n "$(grep "mining.submit" ckpool.log | wc -l)," >> {1} && '.format(ckpoolLogLocation, outputFileName);
+        cmd += 'echo -n "$(grep "] BLOCK ACCEPTED" {0} | wc -l)," >> {1} && '.format(ckpoolLogLocation, outputFileName);
+        cmd += 'echo -n "$(grep ": submitBitcoinBlock:" ckpool.log | wc -l)," >> {1} && '.format(ckpoolLogLocation, outputFileName);
         cmd += 'echo "$(grep ": getblocktemplate:" {0} | wc -l)" >> {1}'.format(ckpoolLogLocation, outputFileName);
 
         console.log("executing remote command", cmd);

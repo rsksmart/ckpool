@@ -93,10 +93,11 @@ function processResults() {
 
         var submitBlock = [];
         var getblocktemplate = [];
+        var numberOfLine = 0;
 
         var summaryLines = fs.readFileSync('results/summary.csv').toString().split('\n').forEach(function(line) {
             
-            if(line.startsWith("getblocktemplate")) {
+            if(line.startsWith("getblocktemplate") && numberOfLine > 5) {
 
                 var time = line.split(",")[5];
 
@@ -106,7 +107,7 @@ function processResults() {
                 }
             } 
 
-            if(line.startsWith("submitblock")) {
+            if(line.startsWith("submitblock") && numberOfLine > 5) {
 
                 var time = line.split(",")[2];
 
@@ -115,6 +116,8 @@ function processResults() {
                     submitBlock.push(time);
                 }
             }
+
+            numberOfLine++;
         });
 
         // console.log("notif pool -> miner | average", stats.mean(getblocktemplate));

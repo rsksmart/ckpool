@@ -51,3 +51,6 @@ logs2
 tools/automation/node_modules
 tools/automation/results
 tools/automation/build
+.idea
+notifier
+libckpool.a

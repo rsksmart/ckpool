@@ -6,7 +6,7 @@
                 "url" : "",
                 "auth" : "admin",
                 "pass" : "admin",
-                "notify" : false
+                "notify" : true
             }
         ],
         "rskd" :  [
@@ -16,7 +16,7 @@
                 "pass" : "pass"
             }
         ],
-        "blockPoll" : 100,
+        "blockPoll" : 10000,
         "serverUrl" : [ ],
         "logDir" : "logs",
         "rskPollPeriod" : 500,
@@ -79,8 +79,8 @@
     "testcases": [
         {
             "mergeMining": true,
-            "miners": 5,
-            "duration": 2,
+            "miners": 500,
+            "duration": 30,
             "ckpool": {
                 "sourceCodeDirectory": "",
                 "devModeOn": true,
