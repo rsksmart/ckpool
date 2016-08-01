@@ -1931,6 +1931,26 @@ int main(int argc, char **argv)
 	launch_logger(&ckp);
 	ckp.logfd = fileno(ckp.logfp);
 
+	if(ckp.config != NULL && ckp.config[0] != '\n')
+	{
+		char configFile[2000];
+		FILE *file;
+		file = fopen(ckp.config, "r");
+		if (file) {
+			int currentChar;
+			int position = 0;
+			while ((currentChar = getc(file)) != EOF) {
+				configFile[position] = (char) currentChar;
+				position++;
+			}
+			configFile[position] = '\0';
+			fclose(file);
+		}
+
+		LOGINFO_RSK("ROOTSTOCK: config_log_start \n%s", configFile);
+		LOGINFO("ROOTSTOCK: config_log_complete");
+	}
+
 	ret = sysconf(_SC_OPEN_MAX);
 	if (ckp.maxclients > ret * 9 / 10) {
 		LOGWARNING("Cannot set maxclients to %d due to max open file limit of %d, reducing to %d",
