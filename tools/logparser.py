@@ -32,6 +32,8 @@ class LogFile:
         self.submit_jobs = {}       # jobs sent to bitcoind
         self.notify_pending = odict()    # mining.notify without a getblocktemplate
         self.client_difficulty = {} # current difficulty for each client
+        self.readingConfigFile = False
+        self.configFile = ''
 
     def parse(self):
         """Parse log file"""
@@ -50,14 +52,24 @@ class LogFile:
             self.flush_info()
 
     def parseline(self, line):
-        if line.find("ROOTSTOCK:") < 0: # Ignore lines that were not logged by us
+        pos = line.find("ROOTSTOCK:")
+        if pos < 0 and not self.readingConfigFile:  # Ignore lines that were not logged by us
+            return
+
+        if pos > 0 and self.readingConfigFile and 'config_log_complete' in line:
+            self.readingConfigFile = False
+            with open("ckpool.conf", "w") as config:
+                config.write(self.configFile)
+            return
+        elif self.readingConfigFile:
+            self.configFile += line
             return
 
         # Log line format is [time] ROOTSTOCK: <operation>: <data>
         result = parse.parse("[{:ti}] {}: {}: {}", line)
 
         # Drop ill formed lines
-        if (result is None) or (len(result.fixed) != 4) or (result.fixed[1] != 'ROOTSTOCK'):
+        if (result is None) or (len(result.fixed) != 4) or (result.fixed[1] != 'ROOTSTOCK') and not self.readingConfigFile:
             print("Error: Failed to parse line: |{}|".format(line))
             return
 
@@ -66,6 +78,12 @@ class LogFile:
         data = result.fixed[3]
 
         # Interpret logged operations
+        if operation.startswith('config_log_start'):
+            self.configFile += operation[operation.index('{'):]
+            self.configFile += data
+            self.readingConfigFile = True
+            return
+
         if operation == 'json_rpc_call':
             rpc_call = parse.parse("{:x}, {}", data)
             if (rpc_call.fixed is None) or (len(rpc_call.fixed) != 2):
