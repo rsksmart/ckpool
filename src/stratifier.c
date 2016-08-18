@@ -4156,7 +4156,6 @@ retry:
 	if (cmdmatch(buf, "update")) {
 		update_base(ckp, GEN_PRIORITY, false);
 	} else if (cmdmatch(buf, "rskupdate")) {
-		LOGWARNING("Invoking rskupdate");
 		update_base(ckp, GEN_PRIORITY, true);
 	} else if (cmdmatch(buf, "subscribe")) {
 		/* Proxifier has a new subscription */
