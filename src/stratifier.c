@@ -1476,7 +1476,7 @@ retry:
 		LOGINFO("ROOTSTOCK: getwork: 0001-01-01 00:00:00.000, 0001-01-01 00:00:00.000, %s", wb->idstring);
 	}
 
-	stratum_broadcast_update(sdata, wb, new_block || new_rootstock);
+	stratum_broadcast_update(sdata, wb, new_block);
 	ret = true;
 	LOGINFO("Broadcast updated stratum base");
 out:
