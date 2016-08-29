@@ -45,3 +45,9 @@ libtool
 tools
 .idea
 src/logs
+.cproject
+.directory
+.project
+run
+language.settings.xml
+logs
