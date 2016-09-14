@@ -1433,10 +1433,11 @@ retry:
 		}
 
 		if (strncmp(rdata->blockhashmerge, rdata->lastblockhashmerge, 64)) {
-			if ((ckp->rsknotifypolicy == 1 && rdata->notify) || 
-				(ckp->rsknotifypolicy == 2 && strncmp(rdata->parentblockhash, rdata->lastparentblockhash, 64))) {
+			if ((ckp->rsknotifypolicy == 3 && rdata->notify) ||
+				(ckp->rsknotifypolicy == 4 && strncmp(rdata->parentblockhash, rdata->lastparentblockhash, 64))) {
 				new_rootstock = true;
 			}
+
 			strcpy(rdata->lastblockhashmerge, rdata->blockhashmerge);
 			strcpy(rdata->lastparentblockhash, rdata->parentblockhash);
 		}
@@ -1476,7 +1477,7 @@ retry:
 		LOGINFO("ROOTSTOCK: getwork: 0001-01-01 00:00:00.000, 0001-01-01 00:00:00.000, %s", wb->idstring);
 	}
 
-	stratum_broadcast_update(sdata, wb, new_block);
+	stratum_broadcast_update(sdata, wb, new_block || new_rootstock);
 	ret = true;
 	LOGINFO("Broadcast updated stratum base");
 out:

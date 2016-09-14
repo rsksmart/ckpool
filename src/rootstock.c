@@ -168,6 +168,14 @@ out:
 	return ret;
 }
 
+static bool trigger_rsk_update(ckpool_t *ckp, rdata_t* rdata, char *buf)
+{
+	bool notify_flag_update = (ckp->rsknotifypolicy == 1 || ckp->rsknotifypolicy == 3) && rdata->notify;
+	bool different_block_hashUpdate = (ckp->rsknotifypolicy == 2 || ckp->rsknotifypolicy == 4) && strcmp(buf, rdata->lastblockhashmerge);
+
+	return notify_flag_update || different_block_hashUpdate;
+}
+
 /*
  * Every "rskpollperiod" invokes on the "main" rskd the getwork command. In some cases (Depending on the getwork result
  * and the pool configuration) notifies the miners
@@ -185,9 +193,8 @@ static void *rootstock_update(void *arg)
 		dealloc(buf);
 		buf = send_recv_proc(ckp->rootstock, "getwork");
 	    if (buf && !cmdmatch(buf, "failed")) {
-	    	if (ckp->rsknotifypolicy == 2 && strcmp(buf, rdata->lastblockhashmerge) ||
-	    		ckp->rsknotifypolicy == 1 && rdata->notify) {
-	    		LOGWARNING("Rootstock: update %s", buf);
+	    	if (trigger_rsk_update(ckp, rdata, buf)) {
+	    		//LOGWARNING("Rootstock: update %s", buf);
 	    		send_proc(ckp->stratifier, "rskupdate");
 	    	}
 	    }
