@@ -1347,6 +1347,7 @@ static void wb_merkle_bins(ckpool_t *ckp, sdata_t *sdata, workbase_t *wb, json_t
 static const unsigned char witness_nonce[32] = {0};
 static const int witness_nonce_size = sizeof(witness_nonce);
 static const unsigned char witness_header[] = {0xaa, 0x21, 0xa9, 0xed};
+static const int witness_header_size = sizeof(witness_header);
 
 static void gbt_witness_data(workbase_t *wb, json_t *txn_array)
 {
@@ -1389,9 +1390,9 @@ static void gbt_witness_data(workbase_t *wb, json_t *txn_array)
 	}
 
 	memcpy(hashbin + 32, &witness_nonce, witness_nonce_size);
-	gen_hash(hashbin, hashbin + witness_nonce_size, 32 + witness_nonce_size);
-	memcpy(hashbin, witness_header, witness_nonce_size);
-	__bin2hex(wb->witnessdata, hashbin, 32 + witness_nonce_size);
+	gen_hash(hashbin, hashbin + witness_header_size, 32 + witness_nonce_size);
+	memcpy(hashbin, witness_header, witness_header_size);
+	__bin2hex(wb->witnessdata, hashbin, 32 + witness_header_size);
 	wb->insert_witness = true;
 }
 
@@ -2771,7 +2772,7 @@ static void update_notify(ckpool_t *ckp, const char *cmd)
 
 	if (proxy->global) {
 		check_bestproxy(sdata);
-		if (proxy->parent == best_proxy(sdata)->parent)
+		if (proxy->parent != best_proxy(sdata)->parent)
 			reconnect_clients(sdata);
 	} else
 		check_userproxies(sdata, proxy->userid);
@@ -6596,7 +6597,20 @@ out:
 	free(buf);
 }
 
-static void add_node_txns(sdata_t *sdata, const json_t *val)
+/* Submit the transactions in node mode so the local btcd has all the
+ * transactions that will go into the next blocksolve. */
+static void submit_transaction(ckpool_t *ckp, const char *hash)
+{
+	char *buf;
+
+	if (unlikely(!ckp->generator_ready))
+		return;
+	ASPRINTF(&buf, "submittxn:%s", hash);
+	send_generator(ckp, buf, GEN_LAX);
+	free(buf);
+}
+
+static void add_node_txns(ckpool_t *ckp, sdata_t *sdata, const json_t *val)
 {
 	json_t *txn_array, *txn_val, *data_val, *hash_val;
 	txntable_t *txn;
@@ -6624,6 +6638,7 @@ static void add_node_txns(sdata_t *sdata, const json_t *val)
 			txn->refcount = 100;
 			continue;
 		}
+		submit_transaction(ckp, data);
 		txn = ckzalloc(sizeof(txntable_t));
 		memcpy(txn->hash, hash, 65);
 		txn->data = strdup(data);
@@ -6709,7 +6724,7 @@ static void parse_node_msg(ckpool_t *ckp, sdata_t *sdata, json_t *val)
 	LOGDEBUG("Got node method %d:%s", msg_type, stratum_msgs[msg_type]);
 	switch (msg_type) {
 		case SM_TRANSACTIONS:
-			add_node_txns(sdata, val);
+			add_node_txns(ckp, sdata, val);
 			break;
 		case SM_WORKINFO:
 			add_node_base(ckp, val);
@@ -6790,11 +6805,12 @@ static void srecv_process(ckpool_t *ckp, json_t *val)
 	msg->json_msg = val;
 	val = json_object_get(msg->json_msg, "client_id");
 	if (unlikely(!val)) {
-		buf = json_dumps(val, JSON_COMPACT);
 		if (ckp->node)
 			parse_node_msg(ckp, sdata, msg->json_msg);
-		else
+		else {
+			buf = json_dumps(val, JSON_COMPACT);
 			LOGWARNING("Failed to extract client_id from connector json smsg %s", buf);
+		}
 		goto out;
 	}
 

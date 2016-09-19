@@ -166,7 +166,7 @@ RootstockJ
 Ckpool
 ------
 
-1) Inside ckpool foler we create a directory to run out tests
+1) Inside ckpool folder we create a directory to run out tests
 
 > mkdir run
 > cd run
