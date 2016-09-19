@@ -1505,8 +1505,8 @@ retry:
 	}
 
 	json_decref(val);
-	
-	f (ckp->rskds) {
+
+	if (ckp->rskds) {
 		memcpy(wb->rsk_blockheaderbin, rdata->blockhashmergebin, 32);
 
 		if(rdata->target[0] != 0){
