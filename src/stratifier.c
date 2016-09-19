@@ -1406,6 +1406,7 @@ static void *do_update(void *arg)
 	int i, prio = ur->prio, retries = 0;
 	ckpool_t *ckp = ur->ckp;
 	sdata_t *sdata = ckp->sdata;
+	rdata_t *rdata = ckp->rdata;
 	bool new_block = false;
 	bool ret = false;
 	workbase_t *wb;
