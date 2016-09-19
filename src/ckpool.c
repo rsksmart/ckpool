@@ -842,9 +842,8 @@ static const char *rpc_method(const char *rpc_req)
  * of persistent connections so cs->fd is always invalid.
  * Rootstock: Some calls go to rskd
  * */
-json_t *json_rpc_call_timeout(connsock_t *cs, const char *rpc_req)
+json_t *json_rpc_call_timeout(connsock_t *cs, const char *rpc_req, float timeout)
 {
-	float timeout = RPC_TIMEOUT;
 	char *http_req = NULL;
 	json_error_t err_val;
 	json_t *val = NULL;
