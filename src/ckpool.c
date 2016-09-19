@@ -29,6 +29,7 @@
 #include "ckpool.h"
 #include "libckpool.h"
 #include "generator.h"
+#include "rootstock.h"
 #include "stratifier.h"
 #include "connector.h"
 
@@ -284,6 +285,20 @@ static void *unix_receiver(void *arg)
 	}
 
 	return NULL;
+}
+
+/**
+ * Created for RSK.
+ * Similar to get_unix_msg() but assumes the thread already has the lock and does not wait for a msg to be added.
+ */
+unix_msg_t *get_unix_msg_no_lock_no_wait(proc_instance_t *pi)
+{
+	unix_msg_t *umsg;
+	umsg = pi->unix_msgs;
+	if (umsg)
+		DL_DELETE(pi->unix_msgs, umsg);
+
+	return umsg;
 }
 
 /* Get the next message in the receive queue, or wait up to 5 seconds for
@@ -824,8 +839,10 @@ static const char *rpc_method(const char *rpc_req)
 }
 
 /* All of these calls are made to bitcoind which prefers open/close instead
- * of persistent connections so cs->fd is always invalid. */
-json_t *json_rpc_call(connsock_t *cs, const char *rpc_req)
+ * of persistent connections so cs->fd is always invalid.
+ * Rootstock: Some calls go to rskd
+ * */
+json_t *json_rpc_call_timeout(connsock_t *cs, const char *rpc_req, float timeout)
 {
 	float timeout = RPC_TIMEOUT;
 	char *http_req = NULL;
@@ -872,6 +889,10 @@ json_t *json_rpc_call(connsock_t *cs, const char *rpc_req)
 		 "Content-Length: %d\n\n%s",
 		 cs->auth, cs->url, cs->port, len, rpc_req);
 
+	if (strstr(http_req, "getblocktemplate") == NULL) {
+		LOGINFO_RSK("ROOTSTOCK: json_rpc_call: %p, %s", http_req, rpc_req);
+	}
+
 	len = strlen(http_req);
 	tv_time(&stt_tv);
 	ret = write_socket(cs->fd, http_req, len);
@@ -914,6 +935,10 @@ json_t *json_rpc_call(connsock_t *cs, const char *rpc_req)
 			   elapsed, __func__, rpc_method(rpc_req));
 	}
 
+	if (strstr(http_req, "getblocktemplate") == NULL) {
+		LOGINFO_RSK("ROOTSTOCK: json_rpc_reply: %p, %s", http_req, cs->buf);
+	}
+
 	val = json_loads(cs->buf, 0, &err_val);
 	if (!val) {
 		LOGWARNING("JSON decode (%.10s...) failed(%d): %s",
@@ -929,6 +954,12 @@ out:
 	cksem_post(&cs->sem);
 	return val;
 }
+
+json_t *json_rpc_call(connsock_t *cs, const char *rpc_req)
+{
+	return json_rpc_call_timeout(cs, rpc_req, RPC_TIMEOUT);
+}
+
 
 static void terminate_oldpid(const ckpool_t *ckp, proc_instance_t *pi, const pid_t oldpid)
 {
@@ -1283,6 +1314,23 @@ static void parse_btcds(ckpool_t *ckp, const json_t *arr_val, const int arr_size
 	}
 }
 
+static void parse_rskds(ckpool_t *ckp, const json_t *arr_val, const int arr_size)
+{
+	json_t *val;
+	int i;
+
+	ckp->rskds = arr_size;
+	ckp->rskdurl = ckzalloc(sizeof(char *) * arr_size);
+	ckp->rskdauth = ckzalloc(sizeof(char *) * arr_size);
+	ckp->rskdpass = ckzalloc(sizeof(char *) * arr_size);
+	for (i = 0; i < arr_size; i++) {
+		val = json_array_get(arr_val, i);
+		json_get_string(&ckp->rskdurl[i], val, "url");
+		json_get_string(&ckp->rskdauth[i], val, "auth");
+		json_get_string(&ckp->rskdpass[i], val, "pass");
+	}
+}
+
 static void parse_proxies(ckpool_t *ckp, const json_t *arr_val, const int arr_size)
 {
 	json_t *val;
@@ -1446,6 +1494,12 @@ static void parse_config(ckpool_t *ckp)
 		if (arr_size)
 			parse_btcds(ckp, arr_val, arr_size);
 	}
+	arr_val = json_object_get(json_conf, "rskd");
+	if (arr_val && json_is_array(arr_val)) {
+		arr_size = json_array_size(arr_val);
+		if (arr_size)
+			parse_rskds(ckp, arr_val, arr_size);
+	}
 	json_get_string(&ckp->btcaddress, json_conf, "btcaddress");
 	json_get_string(&ckp->btcsig, json_conf, "btcsig");
 	if (ckp->btcsig && strlen(ckp->btcsig) > 38) {
@@ -1484,6 +1538,8 @@ static void parse_config(ckpool_t *ckp)
 	arr_val = json_object_get(json_conf, "redirecturl");
 	if (arr_val)
 		parse_redirecturls(ckp, arr_val);
+	json_get_int(&ckp->rskpollperiod, json_conf, "rskpollperiod");
+	json_get_int(&ckp->rsknotifypolicy, json_conf, "rsknotifypolicy");
 
 	json_decref(json_conf);
 }
@@ -1589,6 +1645,29 @@ static bool send_recv_path(const char *path, const char *msg)
 		LOGWARNING("Received no response to %s request", msg);
 	Close(sockd);
 	return ret;
+}
+
+static void dump_config_file_to_log(char* configFileLocation)
+{
+	if(configFileLocation != NULL && configFileLocation[0] != '\n')
+	{
+		char configFile[2000];
+		FILE *file;
+		file = fopen(configFileLocation, "r");
+		if (file) {
+			int currentChar;
+			int position = 0;
+			while ((currentChar = getc(file)) != EOF) {
+				configFile[position] = (char) currentChar;
+				position++;
+			}
+			configFile[position] = '\0';
+			fclose(file);
+		}
+
+		LOGINFO_RSK("ROOTSTOCK: config_log_start \n%s", configFile);
+		LOGINFO("ROOTSTOCK: config_log_complete");
+	}
 }
 
 int main(int argc, char **argv)
@@ -1814,6 +1893,8 @@ int main(int argc, char **argv)
 		quit(0, "No proxy entries found in config file %s", ckp.config);
 	if (ckp.redirector && !ckp.redirecturls)
 		quit(0, "No redirect entries found in config file %s", ckp.config);
+	if (!ckp.rskpollperiod)
+		ckp.rskpollperiod = ckp.blockpoll;
 
 	/* Create the log directory */
 	trail_slash(&ckp.logdir);
@@ -1901,6 +1982,10 @@ int main(int argc, char **argv)
 
 	write_namepid(&ckp.main);
 	open_process_sock(&ckp, &ckp.main, &ckp.main.us);
+	launch_logger(&ckp);
+	ckp.logfd = fileno(ckp.logfp);
+
+	dump_config_file_to_log(ckp.config);
 
 	ret = sysconf(_SC_OPEN_MAX);
 	if (ckp.maxclients > ret * 9 / 10) {
@@ -1924,6 +2009,8 @@ int main(int argc, char **argv)
 
 	/* Launch separate processes from here */
 	prepare_child(&ckp, &ckp.generator, generator, "generator");
+	if (ckp.rskds)
+		prepare_child(&ckp, &ckp.rootstock, rootstock, "rootstock");
 	prepare_child(&ckp, &ckp.stratifier, stratifier, "stratifier");
 	prepare_child(&ckp, &ckp.connector, connector, "connector");
 

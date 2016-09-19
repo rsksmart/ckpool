@@ -193,6 +193,7 @@ static inline void flip_80(void *dest_p, const void *src_p)
 void logmsg(int loglevel, const char *fmt, ...);
 
 #define DEFLOGBUFSIZ 1000
+#define DEFLOGBUFSIZ_RSK 20000
 
 #define LOGMSGBUF(__lvl, __buf) do { \
 		logmsg(__lvl, "%s", __buf); \
@@ -206,6 +207,9 @@ void logmsg(int loglevel, const char *fmt, ...);
 #define LOGMSG(_lvl, _fmt, ...) \
 	LOGMSGSIZ(DEFLOGBUFSIZ, _lvl, _fmt, ##__VA_ARGS__)
 
+#define LOGMSG_RSK(_lvl, _fmt, ...) \
+	LOGMSGSIZ(DEFLOGBUFSIZ_RSK, _lvl, _fmt, ##__VA_ARGS__)
+
 #define LOGEMERG(fmt, ...) LOGMSG(LOG_EMERG, fmt, ##__VA_ARGS__)
 #define LOGALERT(fmt, ...) LOGMSG(LOG_ALERT, fmt, ##__VA_ARGS__)
 #define LOGCRIT(fmt, ...) LOGMSG(LOG_CRIT, fmt, ##__VA_ARGS__)
@@ -213,6 +217,7 @@ void logmsg(int loglevel, const char *fmt, ...);
 #define LOGWARNING(fmt, ...) LOGMSG(LOG_WARNING, fmt, ##__VA_ARGS__)
 #define LOGNOTICE(fmt, ...) LOGMSG(LOG_NOTICE, fmt, ##__VA_ARGS__)
 #define LOGINFO(fmt, ...) LOGMSG(LOG_INFO, fmt, ##__VA_ARGS__)
+#define LOGINFO_RSK(fmt, ...) LOGMSG_RSK(LOG_INFO, fmt, ##__VA_ARGS__)
 #define LOGDEBUG(fmt, ...) LOGMSG(LOG_DEBUG, fmt, ##__VA_ARGS__)
 
 #define IN_FMT_FFL " in %s %s():%d"

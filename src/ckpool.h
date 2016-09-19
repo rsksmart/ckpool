@@ -178,6 +178,7 @@ struct ckpool_instance {
 	proc_instance_t main;
 
 	proc_instance_t generator;
+	proc_instance_t rootstock;
 	proc_instance_t stratifier;
 	proc_instance_t connector;
 
@@ -237,6 +238,15 @@ struct ckpool_instance {
 	char *donaddress; // Donation address
 	bool donvalid; // Donation address works on this network
 
+	/* Rootstock data */
+	int rskds;
+	server_instance_t **rskdservers;
+	char **rskdurl;
+	char **rskdauth;
+	char **rskdpass;
+	int rskpollperiod;
+	int rsknotifypolicy;
+
 	/* Stratum options */
 	server_instance_t **servers;
 	char **serverurl; // Array of URLs to bind our server/proxy to
@@ -260,8 +270,12 @@ struct ckpool_instance {
 
 	/* Private data for each process */
 	void *gdata;
+	void *rdata;
 	void *sdata;
 	void *cdata;
+
+	char *gbtresultcache;
+
 };
 
 enum stratum_msgtype {
@@ -323,6 +337,7 @@ ckmsgq_t *create_ckmsgqs(ckpool_t *ckp, const char *name, const void *func, cons
 void _ckmsgq_add(ckmsgq_t *ckmsgq, void *data, const char *file, const char *func, const int line);
 #define ckmsgq_add(ckmsgq, data) _ckmsgq_add(ckmsgq, data, __FILE__, __func__, __LINE__)
 bool ckmsgq_empty(ckmsgq_t *ckmsgq);
+unix_msg_t *get_unix_msg_no_lock_no_wait(proc_instance_t *pi);
 unix_msg_t *get_unix_msg(proc_instance_t *pi);
 
 ckpool_t *global_ckp;
@@ -343,6 +358,7 @@ char *_ckdb_msg_call(const ckpool_t *ckp, const char *msg,  const char *file, co
 		     const int line);
 #define ckdb_msg_call(ckp, msg) _ckdb_msg_call(ckp, msg, __FILE__, __func__, __LINE__)
 
+json_t *json_rpc_call_timeout(connsock_t *cs, const char *rpc_req, float timeout);
 json_t *json_rpc_call(connsock_t *cs, const char *rpc_req);
 bool send_json_msg(connsock_t *cs, const json_t *json_msg);
 json_t *json_msg_result(const char *msg, json_t **res_val, json_t **err_val);

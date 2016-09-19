@@ -383,12 +383,31 @@ retry:
 	} else if (cmdmatch(buf, "submitblock:")) {
 		char blockmsg[80];
 		bool ret;
+		tv_t start_tv;
+		tv_t finish_tv;
 
 		LOGNOTICE("Submitting block data!");
+		tv_time(&start_tv);
 		ret = submit_block(cs, buf + 12 + 64 + 1);
+		tv_time(&finish_tv);
 		memset(buf + 12 + 64, 0, 1);
 		sprintf(blockmsg, "%sblock:%s", ret ? "" : "no", buf + 12);
 		send_proc(ckp->stratifier, blockmsg);
+
+		{
+			struct tm start_tm;
+			int start_ms = (int)(start_tv.tv_usec / 1000);
+			struct tm finish_tm;
+			int finish_ms = (int)(finish_tv.tv_usec / 1000);
+			localtime_r(&(start_tv.tv_sec), &start_tm);
+			localtime_r(&(finish_tv.tv_sec), &finish_tm);
+			LOGINFO("ROOTSTOCK: submitblock: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
+				start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
+				start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
+				finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
+				finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
+				blockmsg);
+		}
 	} else if (cmdmatch(buf, "checkaddr:")) {
 		if (validate_address(cs, buf + 10))
 			send_unix_msg(umsg->sockd, "true");

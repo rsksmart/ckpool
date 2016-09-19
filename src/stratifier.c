@@ -29,6 +29,9 @@
 #include "utlist.h"
 #include "connector.h"
 #include "generator.h"
+#include "rootstock.h"
+
+#include "rsktestconfig.h"
 
 #define MIN1	60
 #define MIN5	300
@@ -138,6 +141,10 @@ struct workbase {
 	char headerbin[112];
 
 	char *logdir;
+
+	/* Rootstock */
+	double rsk_diff;
+	char rsk_blockheaderbin[32];
 
 	ckpool_t *ckp;
 	bool proxy; /* This workbase is proxied work */
@@ -687,6 +694,15 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 		wb->coinb2len += sdata->donkeytxnlen;
 	}
 
+	if (ckp->rskds) {
+		wb->coinb2len += 8;
+		wb->coinb2bin[wb->coinb2len++] = 9 + 32;
+		memcpy(wb->coinb2bin + wb->coinb2len, "\x52\x53\x4B\x42\x4C\x4F\x43\x4B\x3A", 9);
+		wb->coinb2len += 9;
+		memcpy(wb->coinb2bin + wb->coinb2len, wb->rsk_blockheaderbin, 32);
+		wb->coinb2len += 32;
+	}
+
 	wb->coinb2len += 4; // Blank lock
 
 	wb->coinb2 = bin2hex(wb->coinb2bin, wb->coinb2len);
@@ -798,6 +814,8 @@ static void _ckdbq_add(ckpool_t *ckp, const int idtype, json_t *val, const char 
 	static time_t time_counter;
 	static int counter = 0;
 	char *json_msg;
+	time_t now_t;
+	char ch;
 
 	if (unlikely(!val)) {
 		LOGWARNING("Invalid json sent to ckdbq_add from %s %s:%d", file, func, line);
@@ -1138,6 +1156,7 @@ struct update_req {
 	pthread_t *pth;
 	ckpool_t *ckp;
 	int prio;
+	bool from_rsk;
 };
 
 static void broadcast_ping(sdata_t *sdata);
@@ -1392,6 +1411,10 @@ static void *do_update(void *arg)
 	workbase_t *wb;
 	time_t now_t;
 	char *buf;
+	bool new_rootstock = false;
+	tv_t start_tv;
+	tv_t finish_tv;
+	bool executed_gbt;
 
 	pthread_detach(pthread_self());
 	rename_proc("updater");
@@ -1407,21 +1430,36 @@ static void *do_update(void *arg)
 	} else
 		cksem_wait(&sdata->update_sem);
 retry:
-	buf = send_recv_generator(ckp, "getbase", prio);
-	if (unlikely(!buf)) {
-		LOGNOTICE("Get base in update_base delayed due to higher priority request");
-		goto out;
-	}
-	if (unlikely(cmdmatch(buf, "failed"))) {
-		if (retries++ < 5 || prio == GEN_PRIORITY) {
-			LOGWARNING("Generator returned failure in update_base, retry #%d", retries);
-			goto retry;
+
+	executed_gbt = false;
+	if (! ur->from_rsk || !ckp->gbtresultcache) {
+		executed_gbt = true;
+		tv_time(&start_tv);
+		buf = send_recv_generator(ckp, "getbase", prio);
+		tv_time(&finish_tv);
+		if (unlikely(!buf)) {
+			LOGNOTICE("Get base in update_base delayed due to higher priority request");
+			goto out;
 		}
-		LOGWARNING("Generator failed in update_base after retrying");
-		goto out;
+		if (unlikely(cmdmatch(buf, "failed"))) {
+			if (retries++ < 5 || prio == GEN_PRIORITY) {
+				LOGWARNING("Generator returned failure in update_base, retry #%d", retries);
+				goto retry;
+			}
+			LOGWARNING("Generator failed in update_base after retrying");
+			goto out;
+		}
+		if (unlikely(retries))
+			LOGWARNING("Generator succeeded in update_base after retrying");
+		if (ckp->gbtresultcache) {
+			dealloc(ckp->gbtresultcache);
+		}
+		ckp->gbtresultcache = ckzalloc(strlen(buf)+1);
+		memcpy(ckp->gbtresultcache,buf, strlen(buf)+1);
+	} else {
+		buf = ckzalloc(strlen(ckp->gbtresultcache)+1);
+		memcpy(buf, ckp->gbtresultcache, strlen(ckp->gbtresultcache)+1);
 	}
-	if (unlikely(retries))
-		LOGWARNING("Generator succeeded in update_base after retrying");
 
 	wb = ckzalloc(sizeof(workbase_t));
 	wb->ckp = ckp;
@@ -1467,6 +1505,32 @@ retry:
 	}
 
 	json_decref(val);
+	
+	f (ckp->rskds) {
+		memcpy(wb->rsk_blockheaderbin, rdata->blockhashmergebin, 32);
+
+		if(rdata->target[0] != 0){
+			char hash_swap[32], tmp[32];
+			char target[68];
+
+			strncpy(target, rdata->target, 65);
+			hex2bin(hash_swap, target, 32);
+			bswap_256(tmp, hash_swap);
+			double rsk_diff = diff_from_target((uchar *)tmp);
+			wb->rsk_diff = rsk_diff;
+		}
+
+		if (strncmp(rdata->blockhashmerge, rdata->lastblockhashmerge, 64)) {
+			if ((ckp->rsknotifypolicy == 3 && rdata->notify) ||
+				(ckp->rsknotifypolicy == 4 && strncmp(rdata->parentblockhash, rdata->lastparentblockhash, 64))) {
+				new_rootstock = true;
+			}
+
+			strcpy(rdata->lastblockhashmerge, rdata->blockhashmerge);
+			strcpy(rdata->lastparentblockhash, rdata->parentblockhash);
+		}
+	}
+	
 	generate_coinbase(ckp, wb);
 
 	add_base(ckp, sdata, wb, &new_block);
@@ -1479,7 +1543,29 @@ retry:
 
 	if (new_block)
 		LOGNOTICE("Block hash changed to %s", sdata->lastswaphash);
-	stratum_broadcast_update(sdata, wb, new_block);
+		LOGINFO("ROOTSTOCK: newblock: %s, %s", wb->idstring, sdata->lastswaphash);
+	}
+
+	if (executed_gbt) {
+		// Bitcoin's gbt was invoked.   
+		struct tm start_tm;
+		int start_ms = (int)(start_tv.tv_usec / 1000);
+		struct tm finish_tm;
+		int finish_ms = (int)(finish_tv.tv_usec / 1000);
+		localtime_r(&(start_tv.tv_sec), &start_tm);
+		localtime_r(&(finish_tv.tv_sec), &finish_tm);
+		LOGINFO("ROOTSTOCK: getblocktemplate: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
+			start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
+			start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
+			finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
+			finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
+			wb->idstring);
+	} else {
+		// Bitcoin's gbt was not invoked, this was originated by RSK getwork.
+		LOGINFO("ROOTSTOCK: getwork: 0001-01-01 00:00:00.000, 0001-01-01 00:00:00.000, %s", wb->idstring);
+	}
+
+	stratum_broadcast_update(sdata, wb, new_block || new_rootstock);
 	ret = true;
 	LOGINFO("Broadcast updated stratum base");
 out:
@@ -1791,7 +1877,8 @@ static void downstream_blocksubmits(ckpool_t *ckp, const char *gbt_block, const 
 
 static void
 process_block(ckpool_t *ckp, const workbase_t *wb, const char *coinbase, const int cblen,
-	      const uchar *data, const uchar *hash, uchar *swap32, char *blockhash)
+	      const uchar *data, const uchar *hash, uchar *swap32, char *blockhash, 
+	      bool submit_bitcoind, bool submit_rskd)
 {
 	int txns = wb->txns + 1;
 	char *gbt_block, varint[12];
@@ -1824,11 +1911,16 @@ process_block(ckpool_t *ckp, const workbase_t *wb, const char *coinbase, const i
 	strcat(gbt_block, hexcoinbase);
 	if (wb->txns)
 		realloc_strcat(&gbt_block, wb->txn_data);
+	if (ckp->rskds && submit_rskd)
+		send_proc(ckp->rootstock, gbt_block);
+	if (!submit_bitcoind)
+		goto out;
 	send_generator(ckp, gbt_block, GEN_PRIORITY);
 	if (ckp->remote)
 		upstream_blocksubmit(ckp, gbt_block);
 	else
 		downstream_blocksubmits(ckp, gbt_block, NULL);
+out:
 	free(gbt_block);
 }
 
@@ -1888,7 +1980,7 @@ static void submit_node_block(ckpool_t *ckp, sdata_t *sdata, json_t *val)
 
 	/* Fill in the hashes */
 	share_diff(coinbase, enonce1bin, wb, nonce2, ntime32, nonce, hash, swap, &cblen);
-	process_block(ckp, wb, coinbase, cblen, swap, hash, swap32, blockhash);
+	process_block(ckp, wb, coinbase, cblen, swap, hash, swap32, blockhash, true, false);
 
 	JSON_CPACK(bval, "{si,ss,ss,sI,ss,ss,ss,sI,sf,ss,ss,ss,ss}",
 			 "height", wb->height,
@@ -1927,7 +2019,7 @@ out:
 	free(enonce1);
 }
 
-static void update_base(ckpool_t *ckp, const int prio)
+static void update_base(ckpool_t *ckp, const int prio, bool from_rsk)
 {
 	struct update_req *ur = ckalloc(sizeof(struct update_req));
 	pthread_t *pth = ckalloc(sizeof(pthread_t));
@@ -1935,6 +2027,7 @@ static void update_base(ckpool_t *ckp, const int prio)
 	ur->pth = pth;
 	ur->ckp = ckp;
 	ur->prio = prio;
+	ur->from_rsk = from_rsk;
 	create_pthread(pth, do_update, ur);
 }
 
@@ -3285,7 +3378,7 @@ static void block_solve(ckpool_t *ckp, const char *blockhash)
 	json_t *val;
 
 	if (!ckp->node)
-		update_base(ckp, GEN_PRIORITY);
+		update_base(ckp, GEN_PRIORITY, false);
 
 	ts_realtime(&ts_now);
 	sprintf(cdfield, "%lu,%lu", ts_now.tv_sec, ts_now.tv_nsec);
@@ -4088,7 +4181,8 @@ retry:
 			if (!ckp->proxy) {
 				LOGDEBUG("%ds elapsed in strat_loop, updating gbt base",
 					 ckp->update_interval);
-				update_base(ckp, GEN_NORMAL);
+				// ckp->update_interval time passed since the last ckpool update to miners. Do a gbt and update miners
+				update_base(ckp, GEN_NORMAL, false);
 			} else if (!ckp->passthrough) {
 				LOGDEBUG("%ds elapsed in strat_loop, pinging miners",
 					 ckp->update_interval);
@@ -4184,7 +4278,9 @@ retry:
 	Close(umsg->sockd);
 	LOGDEBUG("Stratifier received request: %s", buf);
 	if (cmdmatch(buf, "update")) {
-		update_base(ckp, GEN_PRIORITY);
+		update_base(ckp, GEN_PRIORITY, false);
+	} else if (cmdmatch(buf, "rskupdate")) {
+		update_base(ckp, GEN_PRIORITY, true);
 	} else if (cmdmatch(buf, "subscribe")) {
 		/* Proxifier has a new subscription */
 		update_subscribe(ckp, buf);
@@ -4251,7 +4347,7 @@ static void *blockupdate(void *arg)
 		if (buf && cmdmatch(buf, "notify"))
 			cksleep_ms(5000);
 		else if (buf && strcmp(buf, sdata->lastswaphash) && !cmdmatch(buf, "failed"))
-			update_base(ckp, GEN_PRIORITY);
+			update_base(ckp, GEN_PRIORITY, false);
 		else
 			cksleep_ms(ckp->blockpoll);
 	}
@@ -5242,8 +5338,13 @@ out:
 static void stratum_send_diff(sdata_t *sdata, const stratum_instance_t *client)
 {
 	json_t *json_msg;
+	double client_diff = client->diff;
 
-	JSON_CPACK(json_msg, "{s[I]soss}", "params", client->diff, "id", json_null(),
+	if(DEV_MODE_ON){
+		client_diff = MINER_DIFF;
+	}
+
+	JSON_CPACK(json_msg, "{s[f]soss}", "params", client_diff, "id", json_null(),
 			     "method", "mining.set_difficulty");
 	stratum_add_send(sdata, json_msg, client->id, SM_DIFF);
 }
@@ -5358,7 +5459,11 @@ static void add_submit(ckpool_t *ckp, stratum_instance_t *client, const double d
 
 	/* Diff rate ratio */
 	dsps = client->dsps5 / bias;
-	drr = dsps / (double)client->diff;
+	if (DEV_MODE_ON) {
+		drr = dsps / (MINER_DIFF + (double)client->diff);
+	} else {
+		drr = dsps / (double)client->diff;
+	}
 
 	/* Optimal rate product is 0.3, allow some hysteresis. */
 	if (drr > 0.15 && drr < 0.4)
@@ -5429,9 +5534,29 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	ckmsg_t *block_ckmsg;
 	uchar swap32[32];
 	ts_t ts_now;
+	bool submit_bitcoind = false;
+	bool submit_rskd = false;
+
+	if(DEV_MODE_ON){
+		sdata->current_workbase->rsk_diff = RSK_CKPOOL_DIFF;
+		sdata->current_workbase->network_diff = BTC_CKPOOL_DIFF;
+
+		//printf("RSK LOG -- DIFF:     %f\n", diff);
+		//printf("RSK LOG -- RSK DIFF: %f\n", sdata->current_workbase->rsk_diff);
+		//printf("RSK LOG -- BTC DIFF: %f\n", sdata->current_workbase->network_diff);
+	}
+
+	/* Rootstock difficulty */
+	submit_rskd = !(diff < sdata->current_workbase->rsk_diff * 0.999);
 
 	/* Submit anything over 99.9% of the diff in case of rounding errors */
-	if (diff < sdata->current_workbase->network_diff * 0.999)
+	submit_bitcoind = !(diff < sdata->current_workbase->network_diff * 0.999);
+
+	LOGINFO("ROOTSTOCK: solution: %s, %s, %s, %s", wb->idstring, nonce, 
+		(submit_bitcoind ? "BTC" : "--"),
+		(submit_rskd ? "RSK" : "--"));
+
+	if (!submit_bitcoind && !submit_rskd)
 		return;
 
 	LOGWARNING("Possible block solve diff %f !", diff);
@@ -5442,7 +5567,12 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	ts_realtime(&ts_now);
 	sprintf(cdfield, "%lu,%lu", ts_now.tv_sec, ts_now.tv_nsec);
 
-	process_block(ckp, wb, coinbase, cblen, data, hash, swap32, blockhash);
+	process_block(ckp, wb, coinbase, cblen, data, hash, swap32, blockhash, submit_bitcoind, submit_rskd);
+
+	LOGINFO("ROOTSTOCK: blocksolve: %s, %s, %s, %s", wb->idstring, nonce, nonce2, blockhash);
+
+	if (!submit_bitcoind)
+		return;
 
 	send_node_block(sdata, client->enonce1, nonce, nonce2, ntime32, wb->id,
 			diff, client->id);
@@ -5794,7 +5924,7 @@ out_unlock:
 	}
 	ckdbq_add(ckp, ID_SHARES, val);
 out:
-	if (!sdata->wbincomplete && ((!result && !submit) || !share)) {
+	if (!sdata->wbincomplete && ((!result && !submit) || !share) && !DEV_MODE_ON) {
 		/* Is this the first in a run of invalids? */
 		if (client->first_invalid < client->last_share.tv_sec || !client->first_invalid)
 			client->first_invalid = now_t;
@@ -5848,7 +5978,8 @@ static json_t *__stratum_notify(const workbase_t *wb, const bool clean)
 {
 	json_t *val;
 
-	JSON_CPACK(val, "{s:[ssssosssb],s:o,s:s}",
+	JSON_CPACK(val, "{s:s,s:[ssssosssb],s:o}",
+			"method", "mining.notify",
 			"params",
 			wb->idstring,
 			wb->prevhash,
@@ -5857,10 +5988,9 @@ static json_t *__stratum_notify(const workbase_t *wb, const bool clean)
 			json_deep_copy(wb->merkle_array),
 			wb->bbversion,
 			wb->nbit,
-			wb->ntime,
+			PERF_TEST_MODE_ON ? "572cea63" : wb->ntime,
 			clean,
-			"id", json_null(),
-			"method", "mining.notify");
+			"id", json_null());
 	return val;
 }
 
