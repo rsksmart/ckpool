@@ -896,7 +896,7 @@ json_t *json_rpc_call(connsock_t *cs, const char *rpc_req)
 	}
 
 	if (strstr(http_req, "getblocktemplate") == NULL) {
-		LOGINFO_RSK("ROOTSTOCK: json_rpc_reply: %p, %s", http_req, cs->buf);
+		LOGINFO("ROOTSTOCK: json_rpc_reply: %p, %s", http_req, cs->buf);
 	}
 
 	val = json_loads(cs->buf, 0, &err_val);
