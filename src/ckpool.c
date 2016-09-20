@@ -889,7 +889,7 @@ json_t *json_rpc_call_timeout(connsock_t *cs, const char *rpc_req, float timeout
 		 cs->auth, cs->url, cs->port, len, rpc_req);
 
 	if (strstr(http_req, "getblocktemplate") == NULL) {
-		LOGINFO_RSK("ROOTSTOCK: json_rpc_call: %p, %s", http_req, rpc_req);
+		LOGINFO("ROOTSTOCK: json_rpc_call: %p, %s", http_req, rpc_req);
 	}
 
 	len = strlen(http_req);
