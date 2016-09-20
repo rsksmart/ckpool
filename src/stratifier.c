@@ -694,7 +694,6 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 		wb->coinb2len += sdata->donkeytxnlen;
 	}
 
-/*
 	if (ckp->rskds) {
 		wb->coinb2len += 8;
 		wb->coinb2bin[wb->coinb2len++] = 10 + 32;
@@ -703,7 +702,6 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 		memcpy(wb->coinb2bin + wb->coinb2len, wb->rsk_blockheaderbin, 32);
 		wb->coinb2len += 32;
 	}
-*/
 
 	wb->coinb2len += 4; // Blank lock
 
