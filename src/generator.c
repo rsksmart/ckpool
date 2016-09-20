@@ -2730,7 +2730,6 @@ static void proxy_loop(proc_instance_t *pi)
 	gdata_t *gdata = ckp->gdata;
 	unix_msg_t *umsg = NULL;
 	connsock_t *cs = NULL;
-	bool started = false;
 	char *buf = NULL;
 
 reconnect:
