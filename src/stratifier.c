@@ -656,13 +656,21 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 	wb->coinb2len += 4;
 
 	// Generation value
+	int outputcount = 1;
 	g64 = wb->coinbasevalue;
 	if (ckp->donvalid) {
 		d64 = g64 / 200; // 0.5% donation
 		g64 -= d64; // To guarantee integers add up to the original coinbasevalue
-		wb->coinb2bin[wb->coinb2len++] = 2 + wb->insert_witness;
-	} else
-		wb->coinb2bin[wb->coinb2len++] = 1 + wb->insert_witness;
+		outputcount++;
+	} 
+
+	if (wb->insert_witness)
+		outputcount++;
+
+	if (ckp->rskds)
+		outputcount++;
+
+	wb->coinb2bin[wb->coinb2len++] = outputcount;
 
 	u64 = (uint64_t *)&wb->coinb2bin[wb->coinb2len];
 	*u64 = htole64(g64);
@@ -672,7 +680,6 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 	memcpy(wb->coinb2bin + wb->coinb2len, sdata->pubkeytxnbin, sdata->pubkeytxnlen);
 	wb->coinb2len += sdata->pubkeytxnlen;
 
-	/*
 	if (wb->insert_witness) {
 		// 0 value
 		wb->coinb2len += 8;
@@ -684,7 +691,6 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 		hex2bin(&wb->coinb2bin[wb->coinb2len], wb->witnessdata, witnessdata_size);
 		wb->coinb2len += witnessdata_size;
 	}
-	*/
 
 	if (ckp->donvalid) {
 		u64 = (uint64_t *)&wb->coinb2bin[wb->coinb2len];
@@ -698,9 +704,9 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 
 	if (ckp->rskds) {
 		wb->coinb2len += 8;
-		wb->coinb2bin[wb->coinb2len++] = 9 + 32;
-		memcpy(wb->coinb2bin + wb->coinb2len, "\x52\x53\x4B\x42\x4C\x4F\x43\x4B\x3A", 9);
-		wb->coinb2len += 9;
+		wb->coinb2bin[wb->coinb2len++] = 10 + 32;
+		memcpy(wb->coinb2bin + wb->coinb2len, "\x6A\x52\x53\x4B\x42\x4C\x4F\x43\x4B\x3A", 10);
+		wb->coinb2len += 10;
 		memcpy(wb->coinb2bin + wb->coinb2len, wb->rsk_blockheaderbin, 32);
 		wb->coinb2len += 32;
 	}
