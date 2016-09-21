@@ -1,0 +1,94 @@
+{
+    "ckpool": 
+    {
+        "btcd" :  [
+            {
+                "url" : "",
+                "auth" : "admin",
+                "pass" : "admin",
+                "notify" : true
+            }
+        ],
+        "rskd" :  [
+            {
+                "url" : "",
+                "auth" : "user",
+                "pass" : "pass"
+            }
+        ],
+        "blockPoll" : 10000,
+        "serverUrl" : [ ],
+        "logDir" : "logs",
+        "rskPollPeriod" : 500,
+        "rskNotifyPolicy": 1
+    },
+
+    "deploy": 
+    { 
+        "artifacts":
+        {
+            "minerd": "rootstock-001",
+            "bitcoind": "rootstock-002",
+            "rootstockJ": "rootstock-002",
+            "ckpool": "rootstock-003"
+        },
+        "directory": "automation/"
+    },
+
+    "ssh": 
+    {
+        "privateKeyDirectory": "/Users/tincho/.ssh/id_rsa"
+    },
+    
+    "machines": [
+        {
+            "name": "rootstock-001",
+            "private": {
+                "ip": "192.168.200.124",
+                "port": 22
+                },
+            "public": {
+                "ip": "rootstock.zapto.org",
+                "port": 2221
+            }
+        },
+        {
+            "name": "rootstock-002",
+            "private": {
+                "ip": "192.168.200.141",
+                "port": 22
+                },
+            "public": {
+                "ip": "rootstock.zapto.org",
+                "port": 2222
+            }
+        },
+        {
+            "name": "rootstock-003",
+            "private": {
+                "ip": "192.168.200.139",
+                "port": 22
+                },
+            "public": {
+                "ip": "rootstock.zapto.org",
+                "port": 2223
+            }
+        }
+    ],
+
+    "testcases": [
+        {
+            "mergeMining": true,
+            "miners": 500,
+            "duration": 30,
+            "ckpool": {
+                "sourceCodeDirectory": "",
+                "devModeOn": true,
+                "minerDiff": 0.01,
+                "btcCkpoolDiff": 0.2,
+                "rskCkpoolDiff": 0.01 
+            }
+        }
+    ]
+}
+
