@@ -1,3 +1,5 @@
+[![Build Status](https://circleci-badges-max.herokuapp.com/img/rootstock/ckpool?token=82730acf7ddc48f1ef86f3dd69e0c84e1b2b7182&style=shield)](https://circleci.com/gh/rootstock/ckpool)
+
 CKPOOL + CKDB + libckpool by Con Kolivas and Andrew Smith.
 
 Ultra low overhead massively scalable multi-process, multi-threaded modular
