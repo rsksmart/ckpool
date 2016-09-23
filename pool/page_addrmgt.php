@@ -1,5 +1,7 @@
 <?php
 #
+include_once('email.php');
+#
 function addrmgtuser($data, $user, $err)
 {
  $pg = '<h1>Address Management</h1>';
@@ -8,7 +10,7 @@ function addrmgtuser($data, $user, $err)
 	$pg .= "<span class=err>$err<br><br></span>";
 
  $pg .= makeForm('addrmgt');
- $pg .= "<table callpadding=0 cellspacing=0 border=0>\n";
+ $pg .= "<table cellpadding=0 cellspacing=0 border=0>\n";
  $pg .= '<thead><tr class=title>';
  $pg .= '<td class=dc>#</td>';
  $pg .= '<td class=dl>Address</td>';
@@ -103,7 +105,7 @@ function addrmgtuser($data, $user, $err)
 	$pg .= "<tr class=$row>";
 	$pg .= '<td class=dr>&nbsp;</td>';
 	$pg .= '<td class=dr><span class=st1>*</span>2nd Authentication:</td>';
-	$pg .= '<td class=dl><input type=password name=2fa size=10>';
+	$pg .= '<td class=dl><input name=2fa size=10>';
 	$pg .= ' <input type=submit name=OK value=Save></td>';
 	$pg .= '<td colspan=3 class=dl>&nbsp;</td></tr>';
 
@@ -145,10 +147,12 @@ function doaddrmgt($data, $user)
  $count = getparam('rows', false);
  $pass = getparam('pass', false);
  $twofa = getparam('2fa', false);
+ $mfail = false;
  if ($OK == 'Save' && !nuem($count) && !nuem($pass))
  {
 	if ($count > 0 && $count < 1000)
 	{
+		$mfail = true;
 		$addrarr = array();
 		for ($i = 0; $i < $count; $i++)
 		{
@@ -163,7 +167,31 @@ function doaddrmgt($data, $user)
 		$ans = userSettings($user, null, $addrarr, $pass, $twofa);
 		if ($ans['STATUS'] != 'ok')
 			$err = $ans['ERROR'];
+		else
+		{
+			$ans = userSettings($user);
+			if ($ans['STATUS'] != 'ok')
+				goto meh;
+			if (isset($ans['email']))
+				$email = $ans['email'];
+			else
+				goto meh;
+
+			$emailinfo = getOpts($user, emailOptList());
+			if ($emailinfo['STATUS'] != 'ok')
+				goto meh;
+			else
+				payoutAddressChanged($email, zeip(), $emailinfo);
+		}
+		$mfail = false;
 	}
+ }
+meh:
+ if ($mfail == true)
+ {
+	if ($err != '')
+		$err .= '<br>';
+	$err .= 'An error occurred, check your details below';
  }
 
  $pg = addrmgtuser($data, $user, $err);

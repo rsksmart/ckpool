@@ -90,7 +90,7 @@ function doblocks($data, $user)
 	if ($ans['STATUS'] == 'ok' and isset($ans['s_rows']) and $ans['s_rows'] > 0)
 	{
 		$pg .= '<h1>Block Statistics</h1>';
-		$pg .= "<table callpadding=0 cellspacing=0 border=0>\n";
+		$pg .= "<table cellpadding=0 cellspacing=0 border=0>\n";
 		$pg .= "<thead><tr class=title>";
 		$pg .= "<td class=dl>Description</td>";
 		$pg .= "<td class=dr>Time</td>";
@@ -99,6 +99,13 @@ function doblocks($data, $user)
 		$pg .= "<td class=dr>Mean%</td>";
 		$pg .= "<td class=dr>CDF[Erl]</td>";
 		$pg .= "<td class=dr>Luck%</td>";
+
+		$tt = "<span class=q onclick='tip(\"ppst\",6000)'>";
+		$tt .= '?</span><span class=tip0>';
+		$tt .= "<span class=notip id=ppst>";
+		$tt .= "Pool PPS%: MeanTx% * Luck% minus the pool fee</span></span>";
+
+		$pg .= "<td class=dr>${tt}PPS%</td>";
 		$pg .= "</tr></thead><tbody>\n";
 
 		$since = $data['info']['lastblock'];
@@ -124,6 +131,9 @@ function doblocks($data, $user)
 			$luck = number_format(100 * $ans['s_luck:'.$i], 2);
 			$txm = number_format(100 * $ans['s_txmean:'.$i], 1);
 
+			$poolfee = 0.9; # pool fee as a % out of 100
+			$o = number_format((100 - $poolfee) * $ans['s_txmean:'.$i] / $ans['s_diffmean:'.$i], 2);
+
 			$pg .= "<tr class=$row>";
 			$pg .= "<td class=dl>$desc Blocks</td>";
 			$pg .= "<td class=dr>$age</td>";
@@ -132,6 +142,7 @@ function doblocks($data, $user)
 			$pg .= "<td class=dr>$mean%</td>";
 			$pg .= "<td class=dr$bg>$cdferldsp</td>";
 			$pg .= "<td class=dr>$luck%</td>";
+			$pg .= "<td class=dr>$o%</td>";
 			$pg .= "</tr>\n";
 		}
 		$pg .= "</tbody></table>\n";
@@ -140,6 +151,7 @@ function doblocks($data, $user)
 	if ($ans['STATUS'] == 'ok')
 	{
 		$count = $ans['rows'];
+		$histsiz = $ans['historysize'] . ' ';
 		if ($count == 1)
 		{
 			$num = '';
@@ -154,7 +166,10 @@ function doblocks($data, $user)
 		$pg .= "<h1>Last$num Block$s</h1>";
 	}
 	else
+	{
+		$histsiz = '';
 		$pg .= '<h1>Blocks</h1>';
+	}
 
 	list($fg, $bg) = pctcolour(25.0);
 	$pg .= "<span style='background:$bg; color:$fg;'>";
@@ -169,18 +184,19 @@ function doblocks($data, $user)
 	$pg .= "&nbsp;Red&nbsp;</span>&nbsp;";
 	$pg .= 'is bad luck. Higher Diff% and brighter red is worse luck.<br><br>';
 
-	$pg .= "<table callpadding=0 cellspacing=0 border=0>\n";
+	$pg .= "<table cellpadding=0 cellspacing=0 border=0>\n";
 	$pg .= "<thead><tr class=title>";
 	$pg .= "<td class=dr>#</td>";
 	$pg .= "<td class=dl>Height</td>";
 	if ($user !== null)
 		$pg .= "<td class=dl>Who</td>";
 	$pg .= "<td class=dr>Block Reward</td>";
-	$pg .= "<td class=dc>When</td>";
-	$pg .= "<td class=dr>Status</td>";
+	$pg .= "<td class=dc>When UTC</td>";
+	$pg .= "<td class=dl>Status</td>";
 	$pg .= "<td class=dr>Diff</td>";
 	$pg .= "<td class=dr>Diff%</td>";
 	$pg .= "<td class=dr>CDF</td>";
+	$pg .= "<td class=dr>${histsiz}Luck%</td>";
 	$pg .= "<td class=dr>B</td>";
 	$pg .= "</tr></thead>\n";
  }
@@ -286,6 +302,7 @@ function doblocks($data, $user)
 		$diffratio = $ans['diffratio:'.$i];
 		$cdf = $ans['cdf:'.$i];
 		$luck = $ans['luck:'.$i];
+		$hist = $ans['luckhistory:'.$i];
 
 		if ($diffratio > 0)
 		{
@@ -296,11 +313,13 @@ function doblocks($data, $user)
 				list($fg, $bg) = pctcolour($colpct);
 				$bpct = "<font color=$fg>$approx".number_format($pct, 3).'%</font>';
 				$bg = " bgcolor=$bg";
+				$histdsp = "$approx".number_format(100.0 * $hist, 2).'%';
 			}
 			else
 			{
 				$bpct = "$approx".number_format($pct, 3).'%';
 				$bg = '';
+				$histdsp = '&nbsp;';
 			}
 			$blktot += $diffacc;
 			if ($conf != 'O' and $conf != 'R')
@@ -313,6 +332,7 @@ function doblocks($data, $user)
 			$bg = '';
 			$bpct = '?';
 			$cdfdsp = '?';
+			$histdsp = '?';
 		}
 
 		if ($wantcsv === false)
@@ -321,13 +341,17 @@ function doblocks($data, $user)
 		 $pg .= "<td class=dr$ex>$seq</td>";
 		 $pg .= "<td class=dl$ex>$hifld</td>";
 		 if ($user !== null)
-			$pg .= "<td class=dl$ex>".htmlspecialchars($ans['workername:'.$i]).'</td>';
+		 {
+			list($abr, $nam) = dspname($ans['workername:'.$i]);
+			$pg .= "<td class=dl$ex>$nam</td>";
+		 }
 		 $pg .= "<td class=dr$ex>".btcfmt($ans['reward:'.$i]).'</td>';
-		 $pg .= "<td class=dl$ex>".utcd($ans['firstcreatedate:'.$i]).'</td>';
-		 $pg .= "<td class=dr$ex>$tt$stat</td>";
+		 $pg .= "<td class=dc$ex>".utcd($ans['firstcreatedate:'.$i], false, false).'</td>';
+		 $pg .= "<td class=dl$ex>$tt$stat</td>";
 		 $pg .= "<td class=dr>$stara$approx$acc</td>";
 		 $pg .= "<td class=dr$bg>$bpct</td>";
 		 $pg .= "<td class=dr>$cdfdsp</td>";
+		 $pg .= "<td class=dr>$histdsp</td>";
 		 $pg .= "<td class=dr>$nn</td>";
 		 $pg .= "</tr>\n";
 		}
@@ -353,9 +377,9 @@ function doblocks($data, $user)
  {
 	$pg .= '<tfoot><tr><td colspan=';
 	if ($user === null)
-		$pg .= '7';
-	else
 		$pg .= '8';
+	else
+		$pg .= '9';
 	$pg .= ' class=dc><font size=-1><span class=st1>*</span>';
 	$pg .= 'Orphans/Rejects count as shares but not as a block in calculations';
 	$pg .= '</font></td></tr></tfoot>';

@@ -988,6 +988,9 @@ static void store_proxy(gdata_t *gdata, proxy_instance_t *proxy)
 	mutex_unlock(&gdata->lock);
 }
 
+/* The difference between a dead proxy and a deleted one is the parent proxy entry
+ * is not removed from the stratifier as it assumes it is down whereas a deleted
+ * proxy has had its entry removed from the generator. */
 static void send_stratifier_deadproxy(ckpool_t *ckp, const int id, const int subid)
 {
 	char buf[256];
@@ -995,6 +998,16 @@ static void send_stratifier_deadproxy(ckpool_t *ckp, const int id, const int sub
 	if (ckp->passthrough)
 		return;
 	sprintf(buf, "deadproxy=%d:%d", id, subid);
+	send_proc(ckp->stratifier, buf);
+}
+
+static void send_stratifier_delproxy(ckpool_t *ckp, const int id, const int subid)
+{
+	char buf[256];
+
+	if (ckp->passthrough)
+		return;
+	sprintf(buf, "delproxy=%d:%d", id, subid);
 	send_proc(ckp->stratifier, buf);
 }
 
@@ -2375,7 +2388,7 @@ static void add_userproxy(ckpool_t *ckp, gdata_t *gdata, const int userid,
 	proxy_instance_t *proxy;
 	char *newurl = strdup(url);
 	char *newauth = strdup(auth);
-	char *newpass = strdup(pass);
+	char *newpass = strdup(pass ? pass : "");
 	int id;
 
 	mutex_lock(&gdata->lock);
@@ -2465,9 +2478,11 @@ static void delete_proxy(ckpool_t *ckp, gdata_t *gdata, proxy_instance_t *proxy)
 			HASH_DELETE(sh, proxy->subproxies, subproxy);
 		mutex_unlock(&proxy->proxy_lock);
 
-		send_stratifier_deadproxy(ckp, subproxy->id, subproxy->subid);
-		if (subproxy && proxy != subproxy)
-			store_proxy(gdata, subproxy);
+		if (subproxy) {
+			send_stratifier_delproxy(ckp, subproxy->id, subproxy->subid);
+			if (proxy != subproxy)
+				store_proxy(gdata, subproxy);
+		}
 	} while (subproxy);
 
 	/* Recycle the proxy itself */

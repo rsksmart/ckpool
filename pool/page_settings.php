@@ -32,7 +32,7 @@ function settings($data, $user, $email, $addr, $err)
  $pg .= '<tr class=dc><td class=dr nowrap>';
  $pg .= '<span class=st1>*</span>2nd Authentication:';
  $pg .= '</td><td class=dl>';
- $pg .= '<input type=password name=2fa size=10>';
+ $pg .= '<input name=2fa size=10>';
  $pg .= '</td></tr>';
  $pg .= '<tr class=dc><td colspan=2 class=dc><font size=-1>';
  $pg .= "<span class=st1>*</span>Leave blank if you haven't enabled it</font>";
@@ -50,7 +50,8 @@ function settings($data, $user, $email, $addr, $err)
   $pg .= makeForm('settings');
   $pg .= '<table cellpadding=5 cellspacing=0 border=0>';
   $pg .= '<tr class=dc><td class=dr colspan=2>';
-  $pg .= 'To change your payout address, enter a new address and your password';
+  $pg .= 'To change your payout address, enter a new address and your password.<br>';
+  $pg .= 'A payout address can only ever be set to one account';
   $pg .= '</td></tr>';
   $pg .= '<tr class=dc><td class=dr>';
   $pg .= 'BTC Address:';
@@ -65,7 +66,7 @@ function settings($data, $user, $email, $addr, $err)
   $pg .= '<tr class=dc><td class=dr nowrap>';
   $pg .= '<span class=st1>*</span>2nd Authentication:';
   $pg .= '</td><td class=dl>';
-  $pg .= '<input type=password name=2fa size=10>';
+  $pg .= '<input name=2fa size=10>';
   $pg .= '</td></tr>';
   $pg .= '<tr class=dc><td colspan=2 class=dc><font size=-1>';
   $pg .= "<span class=st1>*</span>Leave blank if you haven't enabled it</font>";
@@ -102,7 +103,7 @@ function settings($data, $user, $email, $addr, $err)
  $pg .= '<tr class=dc><td class=dr nowrap>';
  $pg .= '<span class=st1>*</span>2nd Authentication:';
  $pg .= '</td><td class=dl>';
- $pg .= '<input type=password name=2fa size=10>';
+ $pg .= '<input name=2fa size=10>';
  $pg .= '</td></tr>';
  $pg .= '<tr class=dc><td colspan=2 class=dc><font size=-1>';
  $pg .= "<span class=st1>*</span>Leave blank if you haven't enabled it</font>";

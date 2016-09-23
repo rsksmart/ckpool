@@ -158,8 +158,10 @@ struct ckpool_instance {
 	/* Directory where logs are written */
 	char *logdir;
 	/* Logfile */
+	char *logfilename;
 	FILE *logfp;
 	int logfd;
+	time_t lastopen_t;
 	/* Connector fds if we inherit them from a running process */
 	int *oldconnfd;
 	/* Should we inherit a running instance's socket and shut it down */
@@ -206,6 +208,9 @@ struct ckpool_instance {
 
 	/* Should we daemonise the ckpool process */
 	bool daemon;
+
+	/* Should we disable the throbber */
+	bool quiet;
 
 	/* Have we given warnings about the inability to raise buf sizes */
 	bool wmem_warn;

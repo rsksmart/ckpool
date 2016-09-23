@@ -40,12 +40,19 @@ function calctx($ans, $count, $miner_sat, $diffacc_total)
 	$diffacc_user = $ans['diffacc:'.$i];
 	$pay_sat = $ans['amount:'.$i];
 	$payaddress = $ans['payaddress:'.$i];
+	if ($payaddress == 'hold')
+	{
+		$dd = '';
+		if ($pay_sat > 0 && $pay_sat < $dust)
+			$dd = ' (dust)';
+		$ers .= "Hold for '$username'$dd ($pay_sat)<br>";
+		$unpaid += $pay_sat;
+		continue;
+	}
 	if ($payaddress == 'none')
 	{
-		$c0 = substr($username, 0, 1);
 		$parts = explode('.', $username);
-		$len = strlen($parts[0]);
-		if (($c0 == '1' || $c0 == '3') && $len > 26 && $len < 37)
+		if (btcaddr($parts[0]) === true)
 			$payaddress = $parts[0];
 		else
 		{
@@ -54,7 +61,7 @@ function calctx($ans, $count, $miner_sat, $diffacc_total)
 				$dd = '';
 				if ($pay_sat < $dust)
 					$dd = ' (dust)';
-				$ers .= "No address for '$username'$dd<br>";
+				$ers .= "No address for '$username'$dd ($pay_sat)<br>";
 			}
 			$unpaid += $pay_sat;
 			continue;
@@ -226,7 +233,7 @@ Block: <input type=text name=blk size=10 value='$blkuse'>
 		$pg .= str_replace(' ', '&nbsp;', $msg)."</span><br>\n";
 	}
 
-	$pg .= "<br><table callpadding=0 cellspacing=0 border=0>\n";
+	$pg .= "<br><table cellpadding=0 cellspacing=0 border=0>\n";
 	$pg .= '<tr class=title>';
 	$pg .= '<td class=dl>Name</td>';
 	$pg .= '<td class=dr>Value</td>';
