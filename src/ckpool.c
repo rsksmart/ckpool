@@ -872,6 +872,10 @@ json_t *json_rpc_call(connsock_t *cs, const char *rpc_req)
 		 "Content-Length: %d\n\n%s",
 		 cs->auth, cs->url, cs->port, len, rpc_req);
 
+	if (strstr(http_req, "getblocktemplate") == NULL) {
+		LOGINFO_RSK("ROOTSTOCK: json_rpc_call: %p, %s", http_req, rpc_req);
+	}
+
 	len = strlen(http_req);
 	tv_time(&stt_tv);
 	ret = write_socket(cs->fd, http_req, len);
@@ -912,6 +916,10 @@ json_t *json_rpc_call(connsock_t *cs, const char *rpc_req)
 	if (elapsed > 5.0) {
 		LOGWARNING("HTTP socket read+write took %.3fs in %s (%.10s...)",
 			   elapsed, __func__, rpc_method(rpc_req));
+	}
+
+	if (strstr(http_req, "getblocktemplate") == NULL) {
+		LOGINFO("ROOTSTOCK: json_rpc_reply: %p, %s", http_req, cs->buf);
 	}
 
 	val = json_loads(cs->buf, 0, &err_val);
@@ -1591,6 +1599,29 @@ static bool send_recv_path(const char *path, const char *msg)
 	return ret;
 }
 
+static void dump_config_file_to_log(char* configFileLocation)
+{
+	if(configFileLocation != NULL && configFileLocation[0] != '\n')
+	{
+		char configFile[2000];
+		FILE *file;
+		file = fopen(configFileLocation, "r");
+		if (file) {
+			int currentChar;
+			int position = 0;
+			while ((currentChar = getc(file)) != EOF) {
+				configFile[position] = (char) currentChar;
+				position++;
+			}
+			configFile[position] = '\0';
+			fclose(file);
+		}
+
+		LOGINFO_RSK("ROOTSTOCK: config_log_start \n%s", configFile);
+		LOGINFO("ROOTSTOCK: config_log_complete");
+	}
+}
+
 int main(int argc, char **argv)
 {
 	struct sigaction handler;
@@ -1901,6 +1932,7 @@ int main(int argc, char **argv)
 
 	write_namepid(&ckp.main);
 	open_process_sock(&ckp, &ckp.main, &ckp.main.us);
+    dump_config_file_to_log(ckp.config);
 
 	ret = sysconf(_SC_OPEN_MAX);
 	if (ckp.maxclients > ret * 9 / 10) {

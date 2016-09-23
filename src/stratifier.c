@@ -30,6 +30,8 @@
 #include "connector.h"
 #include "generator.h"
 
+#include "rsktestconfig.h"
+
 #define MIN1	60
 #define MIN5	300
 #define MIN15	900
@@ -1392,6 +1394,8 @@ static void *do_update(void *arg)
 	workbase_t *wb;
 	time_t now_t;
 	char *buf;
+	tv_t start_tv;
+	tv_t finish_tv;
 
 	pthread_detach(pthread_self());
 	rename_proc("updater");
@@ -1407,7 +1411,9 @@ static void *do_update(void *arg)
 	} else
 		cksem_wait(&sdata->update_sem);
 retry:
+	tv_time(&start_tv);
 	buf = send_recv_generator(ckp, "getbase", prio);
+	tv_time(&finish_tv);
 	if (unlikely(!buf)) {
 		LOGNOTICE("Get base in update_base delayed due to higher priority request");
 		goto out;
@@ -1479,6 +1485,24 @@ retry:
 
 	if (new_block)
 		LOGNOTICE("Block hash changed to %s", sdata->lastswaphash);
+		LOGINFO("ROOTSTOCK: newblock: %s, %s", wb->idstring, sdata->lastswaphash);
+	}
+
+	{
+		struct tm start_tm;
+		int start_ms = (int)(start_tv.tv_usec / 1000);
+		struct tm finish_tm;
+		int finish_ms = (int)(finish_tv.tv_usec / 1000);
+		localtime_r(&(start_tv.tv_sec), &start_tm);
+		localtime_r(&(finish_tv.tv_sec), &finish_tm);
+		LOGINFO("ROOTSTOCK: getblocktemplate: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
+			start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
+			start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
+			finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
+			finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
+			wb->idstring);
+	}
+
 	stratum_broadcast_update(sdata, wb, new_block);
 	ret = true;
 	LOGINFO("Broadcast updated stratum base");
@@ -5243,7 +5267,13 @@ static void stratum_send_diff(sdata_t *sdata, const stratum_instance_t *client)
 {
 	json_t *json_msg;
 
-	JSON_CPACK(json_msg, "{s[I]soss}", "params", client->diff, "id", json_null(),
+	double client_diff = client->diff;
+
+	if(DEV_MODE_ON){
+		client_diff = MINER_DIFF;
+	}
+
+	JSON_CPACK(json_msg, "{s[f]soss}", "params", client_diff, "id", json_null(),
 			     "method", "mining.set_difficulty");
 	stratum_add_send(sdata, json_msg, client->id, SM_DIFF);
 }
@@ -5358,7 +5388,11 @@ static void add_submit(ckpool_t *ckp, stratum_instance_t *client, const double d
 
 	/* Diff rate ratio */
 	dsps = client->dsps5 / bias;
-	drr = dsps / (double)client->diff;
+	if (DEV_MODE_ON) {
+		drr = dsps / (MINER_DIFF + (double)client->diff);
+	} else {
+		drr = dsps / (double)client->diff;
+	}
 
 	/* Optimal rate product is 0.3, allow some hysteresis. */
 	if (drr > 0.15 && drr < 0.4)
@@ -5429,9 +5463,23 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	ckmsg_t *block_ckmsg;
 	uchar swap32[32];
 	ts_t ts_now;
+	bool submit_bitcoind = false;
+
+	if(DEV_MODE_ON){
+		sdata->current_workbase->network_diff = BTC_CKPOOL_DIFF;
+
+		//printf("RSK LOG -- DIFF:     %f\n", diff);
+		//printf("RSK LOG -- BTC DIFF: %f\n", sdata->current_workbase->network_diff);
+	}
 
 	/* Submit anything over 99.9% of the diff in case of rounding errors */
-	if (diff < sdata->current_workbase->network_diff * 0.999)
+	submit_bitcoind = !(diff < sdata->current_workbase->network_diff * 0.999);
+
+	LOGINFO("ROOTSTOCK: solution: %s, %s, %s, %s", wb->idstring, nonce, 
+		(submit_bitcoind ? "BTC" : "--"),
+		"--");
+
+	if (!submit_bitcoind)
 		return;
 
 	LOGWARNING("Possible block solve diff %f !", diff);
@@ -5443,6 +5491,8 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	sprintf(cdfield, "%lu,%lu", ts_now.tv_sec, ts_now.tv_nsec);
 
 	process_block(ckp, wb, coinbase, cblen, data, hash, swap32, blockhash);
+
+	LOGINFO("ROOTSTOCK: blocksolve: %s, %s, %s, %s", wb->idstring, nonce, nonce2, blockhash);
 
 	send_node_block(sdata, client->enonce1, nonce, nonce2, ntime32, wb->id,
 			diff, client->id);
@@ -5794,7 +5844,7 @@ out_unlock:
 	}
 	ckdbq_add(ckp, ID_SHARES, val);
 out:
-	if (!sdata->wbincomplete && ((!result && !submit) || !share)) {
+	if (!sdata->wbincomplete && ((!result && !submit) || !share) && !DEV_MODE_ON) {
 		/* Is this the first in a run of invalids? */
 		if (client->first_invalid < client->last_share.tv_sec || !client->first_invalid)
 			client->first_invalid = now_t;
@@ -5848,7 +5898,8 @@ static json_t *__stratum_notify(const workbase_t *wb, const bool clean)
 {
 	json_t *val;
 
-	JSON_CPACK(val, "{s:[ssssosssb],s:o,s:s}",
+	JSON_CPACK(val, "{s:s,s:[ssssosssb],s:o}",
+			"method", "mining.notify",
 			"params",
 			wb->idstring,
 			wb->prevhash,
@@ -5857,10 +5908,9 @@ static json_t *__stratum_notify(const workbase_t *wb, const bool clean)
 			json_deep_copy(wb->merkle_array),
 			wb->bbversion,
 			wb->nbit,
-			wb->ntime,
+			PERF_TEST_MODE_ON ? "572cea63" : wb->ntime,
 			clean,
-			"id", json_null(),
-			"method", "mining.notify");
+			"id", json_null());
 	return val;
 }
 
@@ -7760,7 +7810,8 @@ void *stratifier(void *arg)
 	}
 
 	randomiser = time(NULL);
-	sdata->enonce1_64 = htole64(randomiser);
+	sdata->enonce1_64 = PERF_TEST_MODE_ON ? 0x2d5e3257 : htole64(randomiser);
+
 	/* Set the initial id to time as high bits so as to not send the same
 	 * id on restarts */
 	randomiser <<= 32;
