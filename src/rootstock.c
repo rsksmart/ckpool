@@ -14,6 +14,10 @@
 #include "libckpool.h"
 #include "rootstock.h"
 
+#include "jansson.h"
+#include "hashtable.h"
+#include "jansson_private.h"
+
 #include "rsktestconfig.h"
 
 #define CHAR_ARRAY_64_COPY_SIZE 65
@@ -83,8 +87,15 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 		return ret;
 	}
 	res_val = json_object_get(val, "result");
-	if (!res_val) {
+	if (!res_val || !json_is_object(res_val)) {
 		LOGWARNING("Failed to get result in json response to mnr_getWork");
+		goto out;
+	}
+
+	if(!json_is_string(json_object_get(res_val, "blockHashForMergedMining")) || !json_is_string(json_object_get(res_val, "target")) ||
+			!json_is_string(json_object_get(res_val, "feesPaidToMiner")) || !json_is_boolean(json_object_get(res_val, "notify")) ||
+			!json_is_string(json_object_get(res_val, "parentBlockHash"))) {
+		LOGWARNING("Failed to get one of the values from result in json response to mnr_getWork");
 		goto out;
 	}
 
