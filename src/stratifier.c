@@ -1890,6 +1890,8 @@ process_block(ckpool_t *ckp, const workbase_t *wb, const char *coinbase, const i
 	      const uchar *data, const uchar *hash, uchar *swap32, char *blockhash, 
 	      bool submit_bitcoind, bool submit_rskd)
 {
+	static volatile time_t rsk_submit;
+	static volatile int rsk_submit_count;
 	int txns = wb->txns + 1;
 	char *gbt_block, varint[12];
 	char hexcoinbase[1024];
@@ -1921,7 +1923,17 @@ process_block(ckpool_t *ckp, const workbase_t *wb, const char *coinbase, const i
 	strcat(gbt_block, hexcoinbase);
 	if (wb->txns)
 		realloc_strcat(&gbt_block, wb->txn_data);
-	if (ckp->rskds && submit_rskd)
+
+	const int max_submits_per_window = 4;
+	const int window_size_seconds = 1;
+	time_t now;
+	time(&now);
+	if (now - rsk_submit >= window_size_seconds) {
+		rsk_submit = now;
+		rsk_submit_count = 0;
+	}
+
+	if (ckp->rskds && submit_rskd && ++rsk_submit_count < max_submits_per_window)
 		send_proc(ckp->rootstock, gbt_block);
 	if (!submit_bitcoind)
 		goto out;
