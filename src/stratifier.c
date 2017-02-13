@@ -1517,13 +1517,13 @@ retry:
 		if (unlikely(retries))
 			LOGWARNING("Generator succeeded in update_base after retrying");
 		if (ckp->gbtresultcache) {
-			dealloc(ckp->gbtresultcache);
+			json_decref(ckp->gbtresultcache);
 		}
-//		ckp->gbtresultcache = ckzalloc(strlen(val)+1);
-//		memcpy(ckp->gbtresultcache, val, strlen(val)+1);
-//	} else {
-//		val = ckzalloc(strlen(ckp->gbtresultcache)+1);
-//		memcpy(val, ckp->gbtresultcache, strlen(ckp->gbtresultcache)+1);
+		json_incref(val);
+		ckp->gbtresultcache = val;
+	} else {
+		val = ckp->gbtresultcache;
+		json_incref(val);
 	}
 
 	wb = ckzalloc(sizeof(workbase_t));
@@ -5788,7 +5788,13 @@ static void stratum_send_diff(sdata_t *sdata, const stratum_instance_t *client)
 {
 	json_t *json_msg;
 
-	JSON_CPACK(json_msg, "{s[I]soss}", "params", client->diff, "id", json_null(),
+ 	double client_diff = client->diff;
+
+	if(DEV_MODE_ON){
+		client_diff = MINER_DIFF;
+ 	}
+
+	JSON_CPACK(json_msg, "{s[f]soss}", "params", client_diff, "id", json_null(),
 			     "method", "mining.set_difficulty");
 	stratum_add_send(sdata, json_msg, client->id, SM_DIFF);
 }
@@ -6383,7 +6389,7 @@ out_nowb:
 	else
 		ckdbq_add(ckp, ID_SHARES, val);
 out:
-	if (!sdata->wbincomplete && ((!result && !submit) || !share)) {
+	if (!sdata->wbincomplete && (((!result && !submit) || !share) && !DEV_MODE_ON)) {
 		/* Is this the first in a run of invalids? */
 		if (client->first_invalid < client->last_share.tv_sec || !client->first_invalid)
 			client->first_invalid = now_t;
