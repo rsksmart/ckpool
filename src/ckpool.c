@@ -934,26 +934,26 @@ out:
 	return val;
 }
 
-static json_t *_json_rpc_call(connsock_t *cs, const char *rpc_req, const bool info_only)
+json_t *json_rpc_call_timeout(connsock_t *cs, const char *rpc_req, float timeout)
 {
-	return _json_rpc_call_timeout(cs, rpc_req, info_only, RPC_TIMEOUT);
+	return _json_rpc_call_timeout(cs, rpc_req, false, timeout);
 }
 
 json_t *json_rpc_call(connsock_t *cs, const char *rpc_req)
 {
-	return _json_rpc_call(cs, rpc_req, false);
+	return _json_rpc_call_timeout(cs, rpc_req, false, RPC_TIMEOUT);
 }
 
 json_t *json_rpc_response(connsock_t *cs, const char *rpc_req)
 {
-	return _json_rpc_call(cs, rpc_req, true);
+	return _json_rpc_call_timeout(cs, rpc_req, true, RPC_TIMEOUT);
 }
 
 /* For when we are submitting information that is not important and don't care
  * about the response. */
 void json_rpc_msg(connsock_t *cs, const char *rpc_req)
 {
-	json_t *val = _json_rpc_call(cs, rpc_req, true);
+	json_t *val = _json_rpc_call_timeout(cs, rpc_req, true, RPC_TIMEOUT);
 
 	/* We don't care about the result */
 	json_decref(val);
