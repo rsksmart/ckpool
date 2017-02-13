@@ -1497,6 +1497,8 @@ static void block_update(ckpool_t *ckp, int *prio)
 	bool ret = false;
 	workbase_t *wb;
 	time_t now_t;
+	tv_t start_tv;
+	tv_t finish_tv;
 	bool executed_gbt;
 
 retry:
@@ -1517,11 +1519,11 @@ retry:
 		if (ckp->gbtresultcache) {
 			dealloc(ckp->gbtresultcache);
 		}
-		ckp->gbtresultcache = ckzalloc(strlen(buf)+1);
-		memcpy(ckp->gbtresultcache,buf, strlen(buf)+1);
-	} else {
-		buf = ckzalloc(strlen(ckp->gbtresultcache)+1);
-		memcpy(buf, ckp->gbtresultcache, strlen(ckp->gbtresultcache)+1);
+//		ckp->gbtresultcache = ckzalloc(strlen(val)+1);
+//		memcpy(ckp->gbtresultcache, val, strlen(val)+1);
+//	} else {
+//		val = ckzalloc(strlen(ckp->gbtresultcache)+1);
+//		memcpy(val, ckp->gbtresultcache, strlen(ckp->gbtresultcache)+1);
 	}
 
 	wb = ckzalloc(sizeof(workbase_t));
@@ -4736,9 +4738,9 @@ retry:
 
 	LOGDEBUG("Stratifier received request: %s", buf);
 	if (cmdmatch(buf, "update")) {
-		update_base(ckp, GEN_PRIORITY);
+		update_base(sdata, GEN_PRIORITY);
 	} else if (cmdmatch(buf, "rskupdate")) {
-		update_base(ckp, RSK_PRIORITY);
+		update_base(sdata, RSK_PRIORITY);
 	} else if (cmdmatch(buf, "subscribe")) {
 		/* Proxifier has a new subscription */
 		update_subscribe(ckp, buf);

@@ -284,7 +284,7 @@ struct ckpool_instance {
 	void *sdata;
 	void *cdata;
 
-	char *gbtresultcache;
+	json_t *gbtresultcache;
 };
 
 enum stratum_msgtype {
@@ -375,6 +375,7 @@ char *_ckdb_msg_call(const ckpool_t *ckp, const char *msg,  const char *file, co
 		     const int line);
 #define ckdb_msg_call(ckp, msg) _ckdb_msg_call(ckp, msg, __FILE__, __func__, __LINE__)
 
+json_t *json_rpc_call_timeout(connsock_t *cs, const char *rpc_req, float timeout);
 json_t *json_rpc_call(connsock_t *cs, const char *rpc_req);
 json_t *json_rpc_response(connsock_t *cs, const char *rpc_req);
 void json_rpc_msg(connsock_t *cs, const char *rpc_req);
