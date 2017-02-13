@@ -2196,8 +2196,9 @@ process_block(const workbase_t *wb, const char *coinbase, const int cblen,
 
 /* Submit block data to RSK node, free gbt_block if solution is not valid for BTC. 
  * Avoid flooding by allowing only 3 submits per second. */
-static bool rsk_block_submit(ckpool_t *ckp, char *gbt_block, bool submit_bitcoind)
+static void rsk_block_submit(ckpool_t *ckp, char *gbt_block, bool submit_bitcoind)
 {
+	char *gbt_block_for_rsk;
 	static volatile time_t rsk_submit;
 	static volatile int rsk_submit_count;
 	const int max_submits_per_window = 4;
@@ -2209,8 +2210,14 @@ static bool rsk_block_submit(ckpool_t *ckp, char *gbt_block, bool submit_bitcoin
 		rsk_submit_count = 0;
 	}
 
-	if (ckp->rskds && ++rsk_submit_count < max_submits_per_window)
-		send_proc(ckp->rootstock, gbt_block);
+	if (ckp->rskds && ++rsk_submit_count < max_submits_per_window) {
+		/* RSK Message format: "submitblock:data" */
+		gbt_block_for_rsk = ckzalloc(1024);
+		sprintf(gbt_block_for_rsk, "submitblock:%s", gbt_block);
+
+		send_proc(ckp->rootstock, gbt_block_for_rsk);
+		free(gbt_block_for_rsk);
+	}
 
 	if (!submit_bitcoind)
 		free(gbt_block);
@@ -5896,7 +5903,11 @@ static void add_submit(ckpool_t *ckp, stratum_instance_t *client, const double d
 
 	/* Diff rate ratio */
 	dsps = client->dsps5 / bias;
-	drr = dsps / (double)client->diff;
+	if (DEV_MODE_ON) {
+		drr = dsps / (MINER_DIFF + (double)client->diff);
+	} else {
+		drr = dsps / (double)client->diff;
+	}
 
 	/* Optimal rate product is 0.3, allow some hysteresis. */
 	if (drr > 0.15 && drr < 0.4)
