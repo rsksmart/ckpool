@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016 Con Kolivas
+ * Copyright 2014-2017 Con Kolivas
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -193,7 +193,6 @@ static inline void flip_80(void *dest_p, const void *src_p)
 void logmsg(int loglevel, const char *fmt, ...);
 
 #define DEFLOGBUFSIZ 1000
-#define DEFLOGBUFSIZ_RSK 20000
 
 #define LOGMSGBUF(__lvl, __buf) do { \
 		logmsg(__lvl, "%s", __buf); \
@@ -207,9 +206,6 @@ void logmsg(int loglevel, const char *fmt, ...);
 #define LOGMSG(_lvl, _fmt, ...) \
 	LOGMSGSIZ(DEFLOGBUFSIZ, _lvl, _fmt, ##__VA_ARGS__)
 
-#define LOGMSG_RSK(_lvl, _fmt, ...) \
-	LOGMSGSIZ(DEFLOGBUFSIZ_RSK, _lvl, _fmt, ##__VA_ARGS__)
-
 #define LOGEMERG(fmt, ...) LOGMSG(LOG_EMERG, fmt, ##__VA_ARGS__)
 #define LOGALERT(fmt, ...) LOGMSG(LOG_ALERT, fmt, ##__VA_ARGS__)
 #define LOGCRIT(fmt, ...) LOGMSG(LOG_CRIT, fmt, ##__VA_ARGS__)
@@ -217,7 +213,6 @@ void logmsg(int loglevel, const char *fmt, ...);
 #define LOGWARNING(fmt, ...) LOGMSG(LOG_WARNING, fmt, ##__VA_ARGS__)
 #define LOGNOTICE(fmt, ...) LOGMSG(LOG_NOTICE, fmt, ##__VA_ARGS__)
 #define LOGINFO(fmt, ...) LOGMSG(LOG_INFO, fmt, ##__VA_ARGS__)
-#define LOGINFO_RSK(fmt, ...) LOGMSG_RSK(LOG_INFO, fmt, ##__VA_ARGS__)
 #define LOGDEBUG(fmt, ...) LOGMSG(LOG_DEBUG, fmt, ##__VA_ARGS__)
 
 #define IN_FMT_FFL " in %s %s():%d"
@@ -246,6 +241,14 @@ void logmsg(int loglevel, const char *fmt, ...);
  * writer. */
 #define UNIX_READ_TIMEOUT 5
 #define UNIX_WRITE_TIMEOUT 10
+
+#define MIN1	60
+#define MIN5	300
+#define MIN15	900
+#define HOUR	3600
+#define HOUR6	21600
+#define DAY	86400
+#define WEEK	604800
 
 /* Share error values */
 
@@ -366,7 +369,7 @@ static inline void json_intcpy(int *i, json_t *val, const char *key)
 
 static inline void json_strdup(char **buf, json_t *val, const char *key)
 {
-	*buf = strdup(json_string_value(json_object_get(val, key)));
+	*buf = strdup(json_string_value(json_object_get(val, key)) ? : "");
 }
 
 /* Helpers for setting a field will check for valid entry and print an error
@@ -586,6 +589,7 @@ int ms_tvdiff(tv_t *end, tv_t *start);
 double tvdiff(tv_t *end, tv_t *start);
 
 void decay_time(double *f, double fadd, double fsecs, double interval);
+double sane_tdiff(tv_t *end, tv_t *start);
 void suffix_string(double val, char *buf, size_t bufsiz, int sigdigits);
 
 double le256todouble(const uchar *target);
