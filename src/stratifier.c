@@ -2212,7 +2212,7 @@ static void rsk_block_submit(ckpool_t *ckp, char *gbt_block, bool submit_bitcoin
 
 	if (ckp->rskds && ++rsk_submit_count < max_submits_per_window) {
 		/* RSK Message format: "submitblock:data" */
-		gbt_block_for_rsk = ckzalloc(1024);
+		gbt_block_for_rsk = ckzalloc(strlen(gbt_block)+12+1);
 		sprintf(gbt_block_for_rsk, "submitblock:%s", gbt_block);
 
 		send_proc(ckp->rootstock, gbt_block_for_rsk);
