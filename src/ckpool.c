@@ -129,6 +129,9 @@ void logmsg(int loglevel, const char *fmt, ...)
 	else
 		ASPRINTF(&log, "%s %s\n", stamp, buf);
 
+	if(unlikely(!log))
+		goto out;
+
 	if (unlikely(!global_ckp->console_logger)) {
 		fprintf(stderr, "%s", log);
 		goto out_free;
