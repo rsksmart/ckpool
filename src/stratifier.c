@@ -2168,9 +2168,11 @@ process_block(const workbase_t *wb, const char *coinbase, const int cblen,
 	flip_32(flip32, hash);
 	__bin2hex(blockhash, flip32, 32);
 
-	/* Message format: "data" */
+	/* Message format: "submitblock:hash,data" */
 	gbt_block = ckzalloc(1024);
-	__bin2hex(gbt_block, data, 80);
+	sprintf(gbt_block, "submitblock:%s,", blockhash);
+	__bin2hex(gbt_block + 12 + 64 + 1, data, 80);
+
 	if (txns < 0xfd) {
 		uint8_t val8 = txns;
 
@@ -2191,6 +2193,7 @@ process_block(const workbase_t *wb, const char *coinbase, const int cblen,
 	strcat(gbt_block, hexcoinbase);
 	if (wb->txns)
 		realloc_strcat(&gbt_block, wb->txn_data);
+
 	return gbt_block;
 }
 
@@ -2211,12 +2214,7 @@ static void rsk_block_submit(ckpool_t *ckp, char *gbt_block, bool submit_bitcoin
 	}
 
 	if (ckp->rskds && ++rsk_submit_count < max_submits_per_window) {
-		/* RSK Message format: "submitblock:data" */
-		gbt_block_for_rsk = ckzalloc(strlen(gbt_block)+12+1);
-		sprintf(gbt_block_for_rsk, "submitblock:%s", gbt_block);
-
-		send_proc(ckp->rootstock, gbt_block_for_rsk);
-		free(gbt_block_for_rsk);
+		send_proc(ckp->rootstock, gbt_block);
 	}
 
 	if (!submit_bitcoind)
@@ -2229,6 +2227,7 @@ static bool local_block_submit(ckpool_t *ckp, char *gbt_block, const uchar *flip
 	bool ret = generator_submitblock(ckp, gbt_block);
 
 	free(gbt_block);
+
 	/* Check failures that may be inconclusive but were submitted via other
 	 * means. */
 	if (!ret) {

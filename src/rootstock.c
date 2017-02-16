@@ -423,7 +423,7 @@ retry:
 		tv_t finish_tv;
 		LOGINFO("Submitting rootstock block data!");
 		tv_time(&start_tv);
-		ret = rsk_submitBitcoinBlock(cs, buf + 12);
+		ret = rsk_submitBitcoinBlock(cs, buf + 12 + 64 + 1);
 		tv_time(&finish_tv);
 		{
 			struct tm start_tm;
@@ -432,7 +432,7 @@ retry:
 			int finish_ms = (int)(finish_tv.tv_usec / 1000);
 			localtime_r(&(start_tv.tv_sec), &start_tm);
 			localtime_r(&(finish_tv.tv_sec), &finish_tm);
-			memset(buf + 12, 0, 1);
+			memset(buf + 12 + 64, 0, 1);
 			LOGINFO("ROOTSTOCK: submitBitcoinBlock: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
 				start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
 				start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,

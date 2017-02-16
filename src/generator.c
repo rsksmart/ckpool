@@ -312,12 +312,20 @@ static void clear_unix_msg(unix_msg_t **umsg)
 	}
 }
 
+/* buf content has a message with format: "submitblock:hash,data" */
 bool generator_submitblock(ckpool_t *ckp, char *buf)
 {
 	gdata_t *gdata = ckp->gdata;
 	server_instance_t *si;
 	bool warn = false;
+	bool ret;
 	connsock_t *cs;
+	const size_t submitblock_tag_size = 12;
+	const size_t blockhash_size = 64;
+	const size_t data_position = submitblock_tag_size + blockhash_size + 1;
+	char blockmsg[80];
+	tv_t start_tv;
+	tv_t finish_tv;
 
 	while (unlikely(!(si = gdata->current_si))) {
 		if (!warn)
@@ -327,7 +335,29 @@ bool generator_submitblock(ckpool_t *ckp, char *buf)
 	}
 	cs = &si->cs;
 	LOGNOTICE("Submitting block data!");
-	return submit_block(cs, buf);
+
+	tv_time(&start_tv);
+	ret = submit_block(cs, buf + data_position);
+	tv_time(&finish_tv);
+
+	memset(buf + submitblock_tag_size + blockhash_size, 0, 1);
+	sprintf(blockmsg, "%sblock:%s", ret ? "" : "no", buf + submitblock_tag_size);
+	{
+		struct tm start_tm;
+		int start_ms = (int)(start_tv.tv_usec / 1000);
+		struct tm finish_tm;
+		int finish_ms = (int)(finish_tv.tv_usec / 1000);
+		localtime_r(&(start_tv.tv_sec), &start_tm);
+		localtime_r(&(finish_tv.tv_sec), &finish_tm);
+		LOGINFO("ROOTSTOCK: submitblock: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
+			start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
+			start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
+			finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
+			finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
+			blockmsg);
+	}
+
+	return ret;
 }
 
 bool generator_get_blockhash(ckpool_t *ckp, int height, char *hash)
