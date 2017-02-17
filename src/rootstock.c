@@ -24,41 +24,6 @@
 #define HEX_HASH_SIZE sizeof(((rsk_getwork_t*)0)->blockhashmerge)
 #define HEX_TARGET_SIZE sizeof(((rsk_getwork_t*)0)->target)
 
-static unsigned int b64val(char c) {
-	if (c >= 'A' && c <= 'Z') {
-		return c - 'A';
-	} else if (c >= 'a' && c <= 'z') {
-		return c - 'a' + 26;
-	} else if (c >= '0' && c <= '9') {
-		return c - '0' + 52;
-	} else if (c == '+') {
-		return 62;
-	} else if (c == '/') {
-		return 63;
-	}
-	return 0;
-}
-
-size_t b642bin(char* dest, const char* src, size_t size)
-{
-	size_t res = 0;
-	size_t len = strlen(src);
-	while (len >= 4) {
-		unsigned int src0 = b64val(src[0]);
-		unsigned int src1 = b64val(src[1]);
-		unsigned int src2 = b64val(src[2]);
-		unsigned int src3 = b64val(src[3]);
-		dest[0] = (src0 << 2) | (src1 >> 4) & 0x03;
-		dest[1] = ((src1 & 0x0F) << 4) | ((src2 >> 2) & 0x0F);
-		dest[2] = ((src2 & 0x03) << 6) | src3;
-		src += 4;
-		dest += 3;
-		len -= 4;
-		res += 3;
-	}
-	return res;
-}
-
 static const char *rsk_getwork_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_getWork\", \"params\": [], \"id\": %d}\n";
 
 bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
