@@ -392,7 +392,6 @@ char *get_txn(connsock_t *cs, const char *hash)
 	res_val = json_object_get(val, "result");
 	if (res_val && !json_is_null(res_val) && json_is_string(res_val)) {
 		ret = strdup(json_string_value(res_val));
-		json_decref(res_val);
 		LOGDEBUG("get_txn for hash %s got data %s", hash, ret);
 	} else
 		LOGDEBUG("get_txn did not retrieve data for hash %s", hash);

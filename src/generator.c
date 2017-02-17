@@ -323,7 +323,7 @@ bool generator_submitblock(ckpool_t *ckp, char *buf)
 	const size_t submitblock_tag_size = 12;
 	const size_t blockhash_size = 64;
 	const size_t data_position = submitblock_tag_size + blockhash_size + 1;
-	char blockmsg[80];
+	char *blockmsg;
 	tv_t start_tv;
 	tv_t finish_tv;
 
@@ -341,7 +341,7 @@ bool generator_submitblock(ckpool_t *ckp, char *buf)
 	tv_time(&finish_tv);
 
 	memset(buf + submitblock_tag_size + blockhash_size, 0, 1);
-	sprintf(blockmsg, "%sblock:%s", ret ? "" : "no", buf + submitblock_tag_size);
+	ASPRINTF(&blockmsg, "%sblock:%s", ret ? "" : "no", buf + submitblock_tag_size);
 	{
 		struct tm start_tm;
 		int start_ms = (int)(start_tv.tv_usec / 1000);

@@ -203,12 +203,12 @@ static void *rootstock_update(void *arg)
 	while (42) {
 		dealloc(buf);
 		buf = send_recv_proc(ckp->rootstock, "getwork");
-	    if (buf && !cmdmatch(buf, "failed")) {
-	    	if (trigger_rsk_update(ckp, rdata, buf)) {
-	    		//LOGWARNING("Rootstock: update %s", buf);
-	    		send_proc(ckp->stratifier, "rskupdate");
-	    	}
-	    }
+		if (buf && !cmdmatch(buf, "failed")) {
+			if (trigger_rsk_update(ckp, rdata, buf)) {
+				//LOGWARNING("Rootstock: update %s", buf);
+				send_proc(ckp->stratifier, "rskupdate");
+			}
+		}
 		cksleep_ms(ckp->rskpollperiod);
 	}
 	return NULL;
@@ -257,7 +257,7 @@ static bool server_alive(ckpool_t *ckp, server_instance_t *si, bool pinging)
 				cs->url, cs->port);
 		}
 		goto out;
-	} 
+	}
 	si->alive = ret = true;
 	LOGNOTICE("Server alive: %s:%s", cs->url, cs->port);
 out:
