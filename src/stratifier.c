@@ -1505,7 +1505,9 @@ retry:
 	executed_gbt = false;
 	if (*prio != RSK_PRIORITY || !ckp->gbtresultcache) {
 		executed_gbt = true;
+		tv_time(&start_tv);
 		val = generator_genbase(ckp);
+		tv_time(&finish_tv);
 		if (unlikely(!val)) {
 			if (retries++ < 5 || *prio == GEN_PRIORITY) {
 				LOGWARNING("Generator returned failure in update_base, retry #%d", retries);
