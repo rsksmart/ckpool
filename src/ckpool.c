@@ -1654,9 +1654,18 @@ static void dump_config_file_to_log(char* configFileLocation)
 {
 	if(configFileLocation != NULL && configFileLocation[0] != '\n')
 	{
-		char configFile[2000];
+		char* configFile;
 		FILE *file;
+		long fileSize;
+
 		file = fopen(configFileLocation, "r");
+
+		fseek(file, 0L, SEEK_END);
+		fileSize = ftell(file);
+		rewind(file);
+
+		configFile = ckalloc(sizeof(char) * fileSize);
+
 		if (file) {
 			int currentChar;
 			int position = 0;
@@ -1669,6 +1678,9 @@ static void dump_config_file_to_log(char* configFileLocation)
 		}
 
 		LOGINFO_RSK("ROOTSTOCK: config_log_start \n%s", configFile);
+
+		free(configFile);
+
 		LOGINFO("ROOTSTOCK: config_log_complete");
 	}
 }
