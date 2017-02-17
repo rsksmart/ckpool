@@ -678,7 +678,7 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 		d64 = g64 / 200; // 0.5% donation
 		g64 -= d64; // To guarantee integers add up to the original coinbasevalue
 		outputcount++;
-	} 
+	}
 
 	if (wb->insert_witness)
 		outputcount++;
@@ -1613,7 +1613,7 @@ retry:
 	}
 
 	if (executed_gbt) {
-		// Bitcoin's gbt was invoked.   
+		// Bitcoin's gbt was invoked.
 		struct tm start_tm;
 		int start_ms = (int)(start_tv.tv_usec / 1000);
 		struct tm finish_tm;
@@ -2199,7 +2199,7 @@ process_block(const workbase_t *wb, const char *coinbase, const int cblen,
 	return gbt_block;
 }
 
-/* Submit block data to RSK node, free gbt_block if solution is not valid for BTC. 
+/* Submit block data to RSK node, free gbt_block if solution is not valid for BTC.
  * Avoid flooding by allowing only 3 submits per second. */
 static void rsk_block_submit(ckpool_t *ckp, char *gbt_block, bool submit_bitcoind)
 {
@@ -5796,11 +5796,11 @@ static void stratum_send_diff(sdata_t *sdata, const stratum_instance_t *client)
 {
 	json_t *json_msg;
 
- 	double client_diff = client->diff;
+	double client_diff = client->diff;
 
 	if(DEV_MODE_ON){
 		client_diff = MINER_DIFF;
- 	}
+	}
 
 	JSON_CPACK(json_msg, "{s[f]soss}", "params", client_diff, "id", json_null(),
 			     "method", "mining.set_difficulty");
@@ -6007,7 +6007,7 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	/* Submit anything over 99.9% of the diff in case of rounding errors */
 	submit_bitcoind = !(diff < sdata->current_workbase->network_diff * 0.999);
 
-	LOGINFO("ROOTSTOCK: solution: %s, %s, %s, %s", wb->idstring, nonce, 
+	LOGINFO("ROOTSTOCK: solution: %s, %s, %s, %s", wb->idstring, nonce,
 		(submit_bitcoind ? "BTC" : "--"),
 		(submit_rskd ? "RSK" : "--"));
 

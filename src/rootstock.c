@@ -66,7 +66,7 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	json_t *res_val, *val;
 	bool ret = false;
 	char *rpc_req;
-	size_t len = 67 + 16; // strlen(rsk_getwork_req) + len(id)
+	size_t len = sizeof(*rsk_getwork_req) + 20; // strlen(rsk_getwork_req) + len(id) + '\0' + extra bits
 	const char* blockhashmerge;
 	char blockhashmergebin[36];
 	const char* target;
@@ -202,16 +202,16 @@ static void *rootstock_update(void *arg)
 
 	while (42) {
 		dealloc(buf);
+
 		buf = send_recv_proc(ckp->rootstock, "getwork");
-	    if (buf && !cmdmatch(buf, "failed")) {
-	    	if (trigger_rsk_update(ckp, rdata, buf)) {
-	    		//LOGWARNING("Rootstock: update %s", buf);
-	    		send_proc(ckp->stratifier, "rskupdate");
-	    	}
-	    }
+		if (buf && !cmdmatch(buf, "failed")) {
+			if (trigger_rsk_update(ckp, rdata, buf)) {
+				//LOGWARNING("Rootstock: update %s", buf);
+				send_proc(ckp->stratifier, "rskupdate");
+			}
+		}
 		cksleep_ms(ckp->rskpollperiod);
 	}
-	return NULL;
 }
 
 /* Use a temporary fd when testing server_alive to avoid races on cs->fd */
@@ -235,11 +235,12 @@ static bool server_alive(ckpool_t *ckp, server_instance_t *si, bool pinging)
 	realloc_strcat(&userpass, ":");
 	realloc_strcat(&userpass, si->pass);
 	cs->auth = http_base64(userpass);
-	dealloc(userpass);
 	if (!cs->auth) {
 		LOGWARNING("Failed to create base64 auth from %s", userpass);
+		dealloc(userpass);
 		return ret;
 	}
+	dealloc(userpass);
 
 	fd = connect_socket(cs->url, cs->port);
 	if (fd < 0) {
@@ -250,6 +251,11 @@ static bool server_alive(ckpool_t *ckp, server_instance_t *si, bool pinging)
 
 	/* Test we can connect, authorise and get a block template */
 	rgw = ckzalloc(sizeof(rsk_getwork_t));
+	if (!rgw) {
+		LOGWARNING("Couldn't allocate an rsk_getwork_t instance");
+		return ret;
+	}
+
 	si->data = rgw;
 	if (!rsk_getwork(cs, rgw)) {
 		if (!pinging) {
@@ -257,12 +263,12 @@ static bool server_alive(ckpool_t *ckp, server_instance_t *si, bool pinging)
 				cs->url, cs->port);
 		}
 		goto out;
-	} 
+	}
 	si->alive = ret = true;
 	LOGNOTICE("Server alive: %s:%s", cs->url, cs->port);
 out:
 	/* Close the file handle */
-	close(fd);
+	Close(fd);
 	return ret;
 }
 
@@ -299,9 +305,8 @@ retry:
 	}
 	LOGWARNING("WARNING: No rskds active!");
 	sleep(5);
-	attempts--;
-	//cksleep_ms(20);
-	if (attempts>=0) {
+
+	if (attempts--) {
 		LOGWARNING("No rskds active, retry %d more times", attempts);
 		goto retry;
 	} else {
@@ -320,7 +325,7 @@ static void kill_server(server_instance_t *si)
 {
 	connsock_t *cs;
 
-	if (!si) // This shouldn't happen
+	if (unlikely(!si)) // This shouldn't happen
 		return;
 
 	LOGNOTICE("Killing server");
@@ -373,7 +378,6 @@ reconnect:
 		mutex_unlock(&pi->rmsg_lock);
 		LOGWARNING("Finished emptying rskd queue");
 		goto reconnect;
-		//goto out;
 	}
 	if (unlikely(!started)) {
 		started = true;
@@ -403,8 +407,7 @@ retry:
 	buf = umsg->buf;
 	if (cmdmatch(buf, "getwork")) {
 		if (!rsk_getwork(cs, rgw)) {
-			LOGWARNING("Failed to get work from %s:%s",
-				   cs->url, cs->port);
+			LOGWARNING("Failed to get work from %s:%s", cs->url, cs->port);
 			si->alive = false;
 			send_unix_msg(umsg->sockd, "failed");
 			goto reconnect;
@@ -423,7 +426,7 @@ retry:
 		tv_t finish_tv;
 		LOGINFO("Submitting rootstock block data!");
 		tv_time(&start_tv);
-		ret = rsk_submitBitcoinBlock(cs, buf + 12 + 64 + 1);
+		ret = rsk_submitBitcoinBlock(cs, buf + 12 + 64 + 1); //magic numbers ftw!
 		tv_time(&finish_tv);
 		{
 			struct tm start_tm;
@@ -541,5 +544,4 @@ void *rootstock(void *arg)
 
 	server_mode(ckp, pi);
 	dealloc(ckp->rdata);
-	return NULL;
 }
