@@ -397,7 +397,7 @@ retry:
 		tv_time(&start_tv);
 		ret = rsk_submitBitcoinBlock(cs, buf + data_position);
 		tv_time(&finish_tv);
-		
+
 		{
 			struct tm start_tm;
 			int start_ms = (int)(start_tv.tv_usec / 1000);
@@ -461,6 +461,11 @@ static void setup_servers(ckpool_t *ckp)
 	pthread_t pth_watchdog;
 	pthread_t pth_rskupdate;
 	int i;
+
+	if (ckp->rskds > SIZE_MAX/sizeof(server_instance_t *)) {
+		LOGWARNING("Too many rskd servers to connect. First two will be used instead.");
+		ckp->rskds = 2;
+	}
 
 	ckp->rskdservers = ckalloc(sizeof(server_instance_t *) * ckp->rskds);
 	for (i = 0; i < ckp->rskds; i++) {
