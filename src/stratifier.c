@@ -2163,6 +2163,8 @@ static char *
 process_block(const workbase_t *wb, const char *coinbase, const int cblen,
 	      const uchar *data, const uchar *hash, uchar *flip32, char *blockhash)
 {
+	const size_t submitblock_tag_size = 12;
+	const size_t blockhash_size = 64;
 	char *gbt_block, varint[12];
 	int txns = wb->txns + 1;
 	char hexcoinbase[1024];
@@ -2173,7 +2175,7 @@ process_block(const workbase_t *wb, const char *coinbase, const int cblen,
 	/* Message format: "submitblock:hash,data" */
 	gbt_block = ckzalloc(1024);
 	sprintf(gbt_block, "submitblock:%s,", blockhash);
-	__bin2hex(gbt_block + 12 + 64 + 1, data, 80);
+	__bin2hex(gbt_block + submitblock_tag_size + blockhash_size + 1, data, 80);
 
 	if (txns < 0xfd) {
 		uint8_t val8 = txns;

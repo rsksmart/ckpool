@@ -20,7 +20,9 @@
 
 #include "rsktestconfig.h"
 
-#define CHAR_ARRAY_64_COPY_SIZE 65
+#define BIN_HASH_SIZE sizeof(((rsk_getwork_t*)0)->blockhashmergebin)
+#define HEX_HASH_SIZE sizeof(((rsk_getwork_t*)0)->blockhashmerge)
+#define HEX_TARGET_SIZE sizeof(((rsk_getwork_t*)0)->target)
 
 static unsigned int b64val(char c) {
 	if (c >= 'A' && c <= 'Z') {
@@ -106,13 +108,14 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 
 	parentblockhash = json_string_value(json_object_get(res_val, "parentBlockHash"));
 
-	strncpy(rgw->blockhashmerge, blockhashmerge+2, CHAR_ARRAY_64_COPY_SIZE);
-	hex2bin(blockhashmergebin, blockhashmerge+2, 32);
-	memcpy(rgw->blockhashmergebin, blockhashmergebin, 32);
+	// + 2 is to skip the initial 0X value of the hex representation of the hash
+	strncpy(rgw->blockhashmerge, blockhashmerge + 2, HEX_HASH_SIZE);
+	hex2bin(blockhashmergebin, blockhashmerge + 2, BIN_HASH_SIZE);
+	memcpy(rgw->blockhashmergebin, blockhashmergebin, BIN_HASH_SIZE);
 
-	strncpy(rgw->target, target+2, CHAR_ARRAY_64_COPY_SIZE);
+	strncpy(rgw->target, target + 2, HEX_TARGET_SIZE);
 
-	strncpy(rgw->parentblockhash, parentblockhash+2, CHAR_ARRAY_64_COPY_SIZE);
+	strncpy(rgw->parentblockhash, parentblockhash+2, HEX_HASH_SIZE);
 
 	rgw->minerfees = minerfees;
 	rgw->notify = notify;
@@ -249,7 +252,7 @@ static bool server_alive(ckpool_t *ckp, server_instance_t *si, bool pinging)
 	rgw = ckzalloc(sizeof(rsk_getwork_t));
 	if (!rgw) {
 		LOGWARNING("Couldn't allocate an rsk_getwork_t instance");
-		return ret;
+		goto out;
 	}
 
 	si->data = rgw;
@@ -420,10 +423,16 @@ retry:
 		bool ret;
 		tv_t start_tv;
 		tv_t finish_tv;
+		const size_t submitblock_tag_size = 12;
+		const size_t blockhash_size = 64;
+		const size_t data_position = submitblock_tag_size + blockhash_size + 1;
+
 		LOGINFO("Submitting rootstock block data!");
+
 		tv_time(&start_tv);
-		ret = rsk_submitBitcoinBlock(cs, buf + 12 + 64 + 1); //magic numbers ftw!
+		ret = rsk_submitBitcoinBlock(cs, buf + data_position);
 		tv_time(&finish_tv);
+		
 		{
 			struct tm start_tm;
 			int start_ms = (int)(start_tv.tv_usec / 1000);
@@ -431,7 +440,7 @@ retry:
 			int finish_ms = (int)(finish_tv.tv_usec / 1000);
 			localtime_r(&(start_tv.tv_sec), &start_tm);
 			localtime_r(&(finish_tv.tv_sec), &finish_tm);
-			memset(buf + 12 + 64, 0, 1);
+			memset(buf + submitblock_tag_size + blockhash_size, 0, 1);
 			LOGINFO("ROOTSTOCK: submitBitcoinBlock: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
 				start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
 				start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
