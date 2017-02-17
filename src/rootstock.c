@@ -66,7 +66,6 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	json_t *res_val, *val;
 	bool ret = false;
 	char *rpc_req;
-	size_t len = sizeof(*rsk_getwork_req) + 20; // strlen(rsk_getwork_req) + len(id) + '\0' + extra bits
 	const char* blockhashmerge;
 	char blockhashmergebin[36];
 	const char* target;
@@ -77,8 +76,7 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	int id;
 
 	id = ++rdata->lastreqid;
-	rpc_req = ckalloc(len);
-	sprintf(rpc_req, rsk_getwork_req, id);
+	ASPRINTF(&rpc_req, rsk_getwork_req, id);
 
 	val = json_rpc_call_timeout(cs, rpc_req, 3);
 	dealloc(rpc_req);
@@ -132,17 +130,15 @@ static bool rsk_submitBitcoinBlock(connsock_t *cs, char *params)
 	ckpool_t *ckp = cs->ckp;
 	rdata_t *rdata = ckp->rdata;
 	json_t *val, *res_val;
-	int len, retries = 0;
+	int retries = 0;
 	const char *res_ret;
 	bool ret = false;
 	char *rpc_req;
 	int id;
 
-	len = 76 + strlen(params) + 16; // len(rsk_submitBitcoinBlock_req) + len(params) + len(id)
 retry:
 	id = ++rdata->lastreqid;
-	rpc_req = ckalloc(len);
-	sprintf(rpc_req, rsk_submitBitcoinBlock_req, params, id);
+	ASPRINTF(&rpc_req, rsk_submitBitcoinBlock_req, params, id);
 	val = json_rpc_call_timeout(cs, rpc_req, 3);
 	dealloc(rpc_req);
 	if (!val) {
