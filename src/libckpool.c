@@ -442,8 +442,8 @@ void _cksem_destroy(sem_t *sem, const char *file, const char *func, const int li
 bool extract_sockaddr(char *url, char **sockaddr_url, char **sockaddr_port)
 {
 	char *url_begin, *url_end, *ipv6_begin, *ipv6_end, *port_start = NULL;
+	char *url_address, *port, *tmp;
 	int url_len, port_len = 0;
-	char *url_address, *port;
 	size_t hlen;
 
 	if (!url) {
@@ -498,8 +498,24 @@ bool extract_sockaddr(char *url, char **sockaddr_url, char **sockaddr_port)
 	} else
 		strcpy(port, "80");
 
-	*sockaddr_port = port;
-	*sockaddr_url = url_address;
+	/*
+	 * This function may be called with sockaddr_* already set as it may
+	 * be getting updated so we need to free the old entries safely.
+	 * Use a temporary variable so they never dereference */
+	if (*sockaddr_port && !safecmp(*sockaddr_port, port))
+		free(port);
+	else {
+		tmp = *sockaddr_port;
+		*sockaddr_port = port;
+		free(tmp);
+	}
+	if (*sockaddr_url && !safecmp(*sockaddr_url, url_address))
+		free(url_address);
+	else {
+		tmp = *sockaddr_url;
+		*sockaddr_url = url_address;
+		free(tmp);
+	}
 
 	return true;
 }
@@ -531,6 +547,22 @@ bool url_from_sockaddr(const struct sockaddr *addr, char *url, char *port)
 	return true;
 }
 
+/* Helper for getaddrinfo with the same API that retries while getting
+ * EAI_AGAIN error */
+static int addrgetinfo(const char *node, const char *service,
+                       const struct addrinfo *hints,
+                       struct addrinfo **res)
+{
+	int ret;
+
+	do {
+		ret = getaddrinfo(node, service, hints, res);
+	} while (ret == EAI_AGAIN);
+
+	return ret;
+}
+
+
 bool addrinfo_from_url(const char *url, const char *port, struct addrinfo *addrinfo)
 {
 	struct addrinfo *servinfo, hints;
@@ -539,7 +571,7 @@ bool addrinfo_from_url(const char *url, const char *port, struct addrinfo *addri
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	servinfo = addrinfo;
-	if (getaddrinfo(url, port, &hints, &servinfo) != 0)
+	if (addrgetinfo(url, port, &hints, &servinfo) != 0)
 		return false;
 	if (!servinfo)
 		return false;
@@ -654,7 +686,7 @@ int bind_socket(char *url, char *port)
 	hints.ai_socktype = SOCK_STREAM;
 	servinfo = &servinfobase;
 
-	if (getaddrinfo(url, port, &hints, &servinfo) != 0) {
+	if (addrgetinfo(url, port, &hints, &servinfo) != 0) {
 		LOGWARNING("Failed to resolve (?wrong URL) %s:%s", url, port);
 		return sockd;
 	}
@@ -691,7 +723,7 @@ int connect_socket(char *url, char *port)
 	memset(&servinfobase, 0, sizeof(struct addrinfo));
 	servinfo = &servinfobase;
 
-	if (getaddrinfo(url, port, &hints, &servinfo) != 0) {
+	if (addrgetinfo(url, port, &hints, &servinfo) != 0) {
 		LOGWARNING("Failed to resolve (?wrong URL) %s:%s", url, port);
 		goto out;
 	}
@@ -763,7 +795,7 @@ int round_trip(char *url)
 	memset(&servinfobase, 0, sizeof(struct addrinfo));
 	p = &servinfobase;
 
-	if (getaddrinfo(url, port, &hints, &p) != 0) {
+	if (addrgetinfo(url, port, &hints, &p) != 0) {
 		LOGWARNING("Failed to resolve (?wrong URL) %s:%s", url, port);
 		return ret;
 	}
@@ -1939,6 +1971,16 @@ void decay_time(double *f, double fadd, double fsecs, double interval)
 		*f = 0;
 }
 
+/* Sanity check to prevent clock adjustments backwards from screwing up stats */
+double sane_tdiff(tv_t *end, tv_t *start)
+{
+	double tdiff = tvdiff(end, start);
+
+	if (unlikely(tdiff < 0.001))
+		tdiff = 0.001;
+	return tdiff;
+}
+
 /* Convert a double value into a truncated string for displaying with its
  * associated suitable for Mega, Giga etc. Buf array needs to be long enough */
 void suffix_string(double val, char *buf, size_t bufsiz, int sigdigits)
@@ -2047,13 +2089,11 @@ double diff_from_nbits(char *nbits)
 
 	pow = nbits[0];
 	powdiff = (8 * (0x1d - 3)) - (8 * (pow - 3));
-	if (powdiff < 8)
+	if (powdiff < 8) // testnet only
 		powdiff = 8;
 	diff32 = be32toh(*((uint32_t *)nbits)) & 0x00FFFFFF;
-	if (likely(powdiff > 0))
-		numerator = 0xFFFFULL << powdiff;
-	else
-		numerator = 0xFFFFULL >> -powdiff;
+	numerator = 0xFFFFULL << powdiff;
+
 	return numerator / (double)diff32;
 }
 

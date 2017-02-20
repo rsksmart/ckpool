@@ -14,6 +14,48 @@
  * Consider adding row level locking (a per kitem usage count) if needed
  */
 
+/* Thread layout
+ * -------------
+ * Any thread that manages a thread count will have 00 in it's name
+ *  and name each subsequent thread it creates, with the same name
+ *  but with 01, 02 etc, and then wait on them all before exiting
+ * The 2 digit 00 relates to THREAD_LIMIT which is 99
+ *	there's a limit of THREAD_LIMIT active threads per thread manager
+ * WARNING - however the total number of threads created is limited by the
+ *	LOCK_CHECK code which allows only MAX_THREADS total ckdb thread to
+ *	be created irrelevant of any being deleted
+ *
+ * The threads that can be managed have a command option to set them when
+ *  starting ckdb and can also be changed via the cmd_threads socket command
+ *
+ * The main() 'ckdb' thread starts:
+ *	iomsgs() for filelog '_fiomsgs' and console '_ciomsgs'
+ *	listener() '_p00qproc'
+ *		which manages it's thread count in pqproc()
+ *
+ * listener() starts:
+ *	breakdown() for reload '_r00breaker' and cmd '_c00breaker'
+ *		each of which manage their thead counts
+ *	logger() '_logger'
+ *	socksetup() '_socksetup'
+ *	summariser() '_summarise'
+ *	marker() '_marker'
+ *  then calls setup_data() which calls reload()
+ *  then calls pqproc()
+ *	which manages the thread count
+ *
+ * socksetup() starts:
+ *	replier() for pool '_preplier' cmd '_creplier' and btc '_breplier'
+ *	listener_all() for cmd '_c00listen' and btc '_b00listen'
+ *		each of which manage their thead counts
+ *	process_socket() '_procsock'
+ *	sockrun() for ckpool '_psockrun' web '_wsockrun' and cmd '_csockrun'
+ *
+ * reload() starts:
+ *	process_reload() '_p00rload'
+ *		which manages it's thread count
+ */
+
 /* Startup
  * -------
  * During startup we load the DB and track where it is up to with
@@ -29,13 +71,13 @@
  *  completes and just process authorise messages immediately while the
  *  reload runs
  * However, we start the ckpool message queue after loading
- *  the optioncontrol, users, workers and useratts DB tables, before loading
- *  the much larger DB tables, so that ckdb is effectively ready for messages
- *  almost immediately
+ *  the optioncontrol, idcontrol, users, workers and useratts DB tables,
+ *  before loading the much larger DB tables, so that ckdb is effectively
+ *  ready for messages almost immediately
  * The first ckpool message allows us to know where ckpool is up to
  *  in the CCLs - see reload_from() for how this is handled
  * The users table, required for the authorise messages, is always updated
- *  immediately
+ *  in the disk DB immediately
  */
 
 /* Reload data needed
@@ -74,7 +116,7 @@
  *  RAM accountbalance: TODO: created as data is loaded
  *
  *  idcontrol: only userid reuse is critical and the user is added
- *	immeditately to the DB before replying to the add message
+ *	immeditately to the disk DB before replying to the add message
  *
  *  Tables that are/will be written straight to the DB, so are OK:
  *	users, useraccounts, paymentaddresses, payments,
@@ -157,6 +199,11 @@ static int cmd_breakdown_threads = -1;
 int reload_breakdown_threads_delta = 0;
 int cmd_breakdown_threads_delta = 0;
 
+int cmd_listener_threads = 2;
+int btc_listener_threads = 2;
+int cmd_listener_threads_delta = 0;
+int btc_listener_threads_delta = 0;
+
 // Lock used to determine when the last breakdown thread exits
 static cklock_t breakdown_lock;
 
@@ -164,7 +211,7 @@ static int replier_count = 0;
 static cklock_t replier_lock;
 
 char *EMPTY = "";
-const char *nullstr = "(null)";
+const char *nullstr = NULLSTR;
 
 const char *true_str = "true";
 const char *false_str = "false";
@@ -209,24 +256,22 @@ const char Transfer[] = "Transfer";
 
 // older version missing field defaults
 // see end of alloc_storage()
-static TRANSFER auth_1 = { "poolinstance", "", NULL, NULL };
-K_ITEM auth_poolinstance = { Transfer, NULL, NULL, (void *)(&auth_1) };
-static TRANSFER auth_2 = { "preauth", FALSE_STR, auth_2.svalue, NULL };
+static TRANSFER auth_2 = { "preauth", FALSE_STR, auth_2.svalue, 0, NULL };
 K_ITEM auth_preauth = { Transfer, NULL, NULL, (void *)(&auth_2) };
-static TRANSFER poolstats_1 = { "elapsed", "0", poolstats_1.svalue, NULL };
+static TRANSFER poolstats_1 = { "elapsed", "0", poolstats_1.svalue, 0, NULL };
 K_ITEM poolstats_elapsed = { Transfer, NULL, NULL, (void *)(&poolstats_1) };
-static TRANSFER userstats_1 = { "elapsed", "0", userstats_1.svalue, NULL };
+static TRANSFER userstats_1 = { "elapsed", "0", userstats_1.svalue, 0, NULL };
 K_ITEM userstats_elapsed = { Transfer, NULL, NULL, (void *)(&userstats_1) };
 // see end of alloc_storage()
 INTRANSIENT *userstats_workername = NULL;
-static TRANSFER userstats_3 = { "idle", FALSE_STR, userstats_3.svalue, NULL };
+static TRANSFER userstats_3 = { "idle", FALSE_STR, userstats_3.svalue, 0, NULL };
 K_ITEM userstats_idle = { Transfer, NULL, NULL, (void *)(&userstats_3) };
-static TRANSFER userstats_4 = { "eos", TRUE_STR, userstats_4.svalue, NULL };
+static TRANSFER userstats_4 = { "eos", TRUE_STR, userstats_4.svalue, 0, NULL };
 K_ITEM userstats_eos = { Transfer, NULL, NULL, (void *)(&userstats_4) };
 
-static TRANSFER shares_1 = { "secondaryuserid", TRUE_STR, shares_1.svalue, NULL };
+static TRANSFER shares_1 = { "secondaryuserid", TRUE_STR, shares_1.svalue, 0, NULL };
 K_ITEM shares_secondaryuserid = { Transfer, NULL, NULL, (void *)(&shares_1) };
-static TRANSFER shareerrors_1 = { "secondaryuserid", TRUE_STR, shareerrors_1.svalue, NULL };
+static TRANSFER shareerrors_1 = { "secondaryuserid", TRUE_STR, shareerrors_1.svalue, 0, NULL };
 K_ITEM shareerrors_secondaryuserid = { Transfer, NULL, NULL, (void *)(&shareerrors_1) };
 // Time limit that this problem occurred
 // 24-Aug-2014 05:20+00 (1st one shortly after this)
@@ -330,7 +375,7 @@ bool dbload_only_sharesummary = false;
  *  markersummaries and pplns payouts may not be correct */
 bool sharesummary_marks_limit = false;
 
-// DB optioncontrol,users,workers,useratts load is complete
+// DB optioncontrol,idcontrol,users,workers,useratts load is complete
 bool db_users_complete = false;
 // DB load is complete
 bool db_load_complete = false;
@@ -343,7 +388,7 @@ bool reloaded_N_files = false;
 // Data load is complete
 bool startup_complete = false;
 // Set to true when pool0 completes, pool0 = socket data during reload
-static bool reload_queue_complete = false;
+bool reload_queue_complete = false;
 // Tell everyone to die
 bool everyone_die = false;
 // Set to true every time a store is created
@@ -383,10 +428,10 @@ static uint64_t sock_acc[MAXSOCK], sock_recv[MAXSOCK];
 // breaker() summarised
 static tv_t break_reload_stt, break_cmd_stt, break_reload_fin;
 static uint64_t break_reload_processed, break_cmd_processed;
-// clistener()
+// listener_all()
+static cklock_t listener_all_lock;
 static double clis_us;
 static uint64_t clis_processed;
-// blistener()
 static double blis_us;
 static uint64_t blis_processed;
 
@@ -408,8 +453,26 @@ char *by_default = "code";
 char *inet_default = "127.0.0.1";
 char *id_default = "42";
 
+// Emulate a list for lock checking
+K_LIST *pgdb_free;
+// Count of db connections
+int pgdb_count;
+__thread char *connect_file = NULLSTR;
+__thread char *connect_func = NULLSTR;
+__thread int connect_line = 0;
+__thread bool connect_dis = true;
+// Pause all DB IO (permanently)
+cklock_t pgdb_pause_lock;
+__thread int pause_read_count = 0;
+__thread char *pause_read_file = NULLSTR;
+__thread char *pause_read_func = NULLSTR;
+__thread int pause_read_line = 0;
+__thread bool pause_read_unlock = false;
+bool pgdb_paused = false;
+bool pgdb_pause_disabled = false;
+
 // NULL or poolinstance must match
-const char *poolinstance = NULL;
+const char *sys_poolinstance = NULL;
 // lock for accessing all mismatch variables
 cklock_t poolinstance_lock;
 time_t last_mismatch_message;
@@ -485,6 +548,8 @@ char *intransient_fields[] = {
 	NULL
 };
 
+INTRANSIENT *in_empty;
+
 // MSGLINE
 K_LIST *msgline_free;
 K_STORE *msgline_store;
@@ -504,6 +569,8 @@ int reload_processing;
 int cmd_processing;
 int sockd_count;
 int max_sockd_count;
+ts_t breaker_sleep_stt;
+int breaker_sleep_ms;
 
 // Trigger breaker() processing
 mutex_t bq_reload_waitlock;
@@ -577,6 +644,7 @@ K_STORE *heartbeatqueue_store;
 
 // TRANSFER
 K_LIST *transfer_free;
+int cull_transfer = CULL_TRANSFER;
 
 // SEQSET
 K_LIST *seqset_free;
@@ -640,8 +708,7 @@ K_LIST *accountadjustment_free;
 K_STORE *accountadjustment_store;
 
 // IDCONTROL
-// These are only used for db access - not stored in memory
-//K_TREE *idcontrol_root;
+K_TREE *idcontrol_root;
 K_LIST *idcontrol_free;
 K_STORE *idcontrol_store;
 
@@ -958,7 +1025,7 @@ static void ioprocess(IOQUEUE *io)
 			flock(logfd, LOCK_EX);
 			if (io->errn) {
 				fprintf(LOGFP, "%s%s with errno %d: %s\n",
-						stamp, io->msg, 
+						stamp, io->msg,
 						io->errn, strerror(io->errn));
 			} else
 				fprintf(LOGFP, "%s%s\n", stamp, io->msg);
@@ -1663,18 +1730,21 @@ PGconn *dbconnect()
 }
 
 /* Load tables required to support auths,adduser,chkpass and newid
- * N.B. idcontrol is DB internal so is always ready
  * OptionControl is loaded first in case it is needed by other loads
  *  (though not yet)
  */
 static bool getdata1()
 {
-	PGconn *conn = dbconnect();
+	PGconn *conn = NULL;
 	bool ok = true;
+
+	CKPQConn(&conn);
 
 	if (!(ok = check_db_version(conn)))
 		goto matane;
 	if (!(ok = optioncontrol_fill(conn)))
+		goto matane;
+	if (!(ok = idcontrol_fill(conn)))
 		goto matane;
 	if (!(ok = users_fill(conn)))
 		goto matane;
@@ -1684,7 +1754,7 @@ static bool getdata1()
 
 matane:
 
-	PQfinish(conn);
+	CKPQFinish(&conn);
 	return ok;
 }
 
@@ -1693,18 +1763,24 @@ matane:
  */
 static bool getdata2()
 {
-	PGconn *conn = dbconnect();
-	bool ok = blocks_fill(conn);
+	PGconn *conn = NULL;
+	bool ok;
 
-	PQfinish(conn);
+	CKPQConn(&conn);
+
+	ok = blocks_fill(conn);
+
+	CKPQFinish(&conn);
 
 	return ok;
 }
 
 static bool getdata3()
 {
-	PGconn *conn = dbconnect();
+	PGconn *conn = NULL;
 	bool ok = true;
+
+	CKPQConn(&conn);
 
 	if (!key_update && !confirm_sharesummary) {
 		if (!(ok = paymentaddresses_fill(conn)) || everyone_die)
@@ -1715,12 +1791,12 @@ static bool getdata3()
 		if (!(ok = miningpayouts_fill(conn)) || everyone_die)
 			goto sukamudai;
 	}
-	PQfinish(conn);
-	conn = dbconnect();
+	CKPQFinish(&conn);
+	CKPQConn(&conn);
 	if (!(ok = workinfo_fill(conn)) || everyone_die)
 		goto sukamudai;
-	PQfinish(conn);
-	conn = dbconnect();
+	CKPQFinish(&conn);
+	CKPQConn(&conn);
 	if (!(ok = marks_fill(conn)) || everyone_die)
 		goto sukamudai;
 	/* must be after workinfo */
@@ -1731,14 +1807,14 @@ static bool getdata3()
 		if (!(ok = payouts_fill(conn)) || everyone_die)
 			goto sukamudai;
 	}
-	PQfinish(conn);
-	conn = dbconnect();
+	CKPQFinish(&conn);
+	CKPQConn(&conn);
 	if (!key_update) {
 		if (!(ok = markersummary_fill(conn)) || everyone_die)
 			goto sukamudai;
 	}
-	PQfinish(conn);
-	conn = dbconnect();
+	CKPQFinish(&conn);
+	CKPQConn(&conn);
 	if (!key_update) {
 		if (!(ok = shares_fill(conn)) || everyone_die)
 			goto sukamudai;
@@ -1748,7 +1824,7 @@ static bool getdata3()
 
 sukamudai:
 
-	PQfinish(conn);
+	CKPQFinish(&conn);
 	return ok;
 }
 
@@ -1915,8 +1991,9 @@ static void alloc_storage()
 					ALLOC_LOGQUEUE, LIMIT_LOGQUEUE, true);
 	logqueue_store = k_new_store(logqueue_free);
 
-	breakqueue_free = k_new_list("BreakQueue", sizeof(BREAKQUEUE),
-				     ALLOC_BREAKQUEUE, LIMIT_BREAKQUEUE, true);
+	breakqueue_free = k_new_list_cull("BreakQueue", sizeof(BREAKQUEUE),
+					  ALLOC_BREAKQUEUE, LIMIT_BREAKQUEUE,
+					  true, CULL_BREAKQUEUE);
 	reload_breakqueue_store = k_new_store(breakqueue_free);
 	reload_done_breakqueue_store = k_new_store(breakqueue_free);
 	cmd_breakqueue_store = k_new_store(breakqueue_free);
@@ -1970,15 +2047,19 @@ static void alloc_storage()
 		}
 	}
 
-	seqtrans_free = k_new_list("SeqTrans", sizeof(SEQTRANS),
-				   ALLOC_SEQTRANS, LIMIT_SEQTRANS, true);
+	seqtrans_free = k_new_list_cull("SeqTrans", sizeof(SEQTRANS),
+					ALLOC_SEQTRANS, LIMIT_SEQTRANS, true,
+					CULL_SEQTRANS);
 
-	msgline_free = k_new_list("MsgLine", sizeof(MSGLINE),
-					ALLOC_MSGLINE, LIMIT_MSGLINE, true);
+	msgline_free = k_new_list_cull("MsgLine", sizeof(MSGLINE),
+					ALLOC_MSGLINE, LIMIT_MSGLINE, true,
+					CULL_MSGLINE);
 	msgline_store = k_new_store(msgline_free);
+	msgline_free->dsp_func = dsp_msgline;
 
-	workqueue_free = k_new_list("WorkQueue", sizeof(WORKQUEUE),
-					ALLOC_WORKQUEUE, LIMIT_WORKQUEUE, true);
+	workqueue_free = k_new_list_cull("WorkQueue", sizeof(WORKQUEUE),
+					 ALLOC_WORKQUEUE, LIMIT_WORKQUEUE,
+					 true, CULL_WORKQUEUE);
 	pool0_workqueue_store = k_new_store(workqueue_free);
 	pool_workqueue_store = k_new_store(workqueue_free);
 	cmd_workqueue_store = k_new_store(workqueue_free);
@@ -1997,8 +2078,9 @@ static void alloc_storage()
 					 LIMIT_HEARTBEATQUEUE, true);
 	heartbeatqueue_store = k_new_store(heartbeatqueue_free);
 
-	transfer_free = k_new_list(Transfer, sizeof(TRANSFER),
-					ALLOC_TRANSFER, LIMIT_TRANSFER, true);
+	transfer_free = k_new_list_cull(Transfer, sizeof(TRANSFER),
+					ALLOC_TRANSFER, LIMIT_TRANSFER, true,
+					cull_transfer);
 	transfer_free->dsp_func = dsp_transfer;
 
 	users_free = k_new_list("Users", sizeof(USERS),
@@ -2051,6 +2133,8 @@ static void alloc_storage()
 	idcontrol_free = k_new_list("IDControl", sizeof(IDCONTROL),
 					ALLOC_IDCONTROL, LIMIT_IDCONTROL, true);
 	idcontrol_store = k_new_store(idcontrol_free);
+	idcontrol_root = new_ktree(NULL, cmp_idcontrol, idcontrol_free);
+	idcontrol_free->dsp_func = dsp_idcontrol;
 
 	esm_free = k_new_list("ESM", sizeof(ESM), ALLOC_ESM, LIMIT_ESM, true);
 	esm_store = k_new_store(esm_free);
@@ -2215,6 +2299,9 @@ static void alloc_storage()
 	userinfo_store = k_new_store(userinfo_free);
 	userinfo_root = new_ktree(NULL, cmp_userinfo, userinfo_free);
 
+	// Emulate a list for lock checking
+	pgdb_free = k_lock_only_list("PGDB");
+
 #if LOCK_CHECK
 	DLPRIO(seqset, 91);
 
@@ -2269,12 +2356,15 @@ static void alloc_storage()
 
 	DLPRIO(paymentaddresses, 5);
 
+	// Must be above instransient
+	DLPRIO(idcontrol, 3);
+
 	// Don't currently nest any locks in these:
 	DLPRIO(esm, PRIO_TERMINAL);
 	DLPRIO(workers, PRIO_TERMINAL);
-	DLPRIO(idcontrol, PRIO_TERMINAL);
 	DLPRIO(ips, PRIO_TERMINAL);
 	DLPRIO(replies, PRIO_TERMINAL);
+	DLPRIO(pgdb, PRIO_TERMINAL);
 
 	DLPCHECK();
 
@@ -2282,9 +2372,8 @@ static void alloc_storage()
 		check_deadlocks = true;
 #endif
 
-	// set intransient
-	auth_1.intransient = get_intransient(auth_1.name, "");
-	auth_1.mvalue = auth_1.intransient->str;
+	// setup intransients
+	in_empty = get_intransient("empty", EMPTY);
 	userstats_workername = get_intransient("workername", "all");
 }
 
@@ -2613,7 +2702,7 @@ static void dealloc_storage()
 	esm_report();
 	FREE_ALL(esm);
 
-	FREE_LISTS(idcontrol);
+	FREE_ALL(idcontrol);
 	FREE_ALL(accountbalance);
 	FREE_ALL(payments);
 
@@ -2849,12 +2938,15 @@ static bool setup_data()
 #define DATASETTRANS(_seqdata, _u) \
 	ENTRYSETTRANS(&((_seqdata)->entry[(_u) & ((_seqdata)->size - 1)]))
 
-// Check for transient missing every 2s
+// Check for transient missing every X seconds
 #define TRANCHECKLIMIT 2.0
 static tv_t last_trancheck;
 // Don't let these messages be slowed down by a trans_process()
 #define TRANCHKSEQOK(_seq) ((_seq) != SEQ_SHARES && (_seq) != SEQ_AUTH && \
 			    (_seq) != SEQ_ADDRAUTH && (_seq) != SEQ_BLOCK)
+
+// How many seconds to allow the build up of trans range messages
+#define TRANSAGELIMIT 10.0
 
 /* time (now) is used, not cd, since cd is only relevant to reloading
  *  and we don't run trans_process() during reloading
@@ -3050,9 +3142,6 @@ static void trans_seq(tv_t *now)
 		if (store->count) {
 			K_WLOCK(seqtrans_free);
 			k_list_transfer_to_head(store, seqtrans_free);
-			if (seqtrans_free->count == seqtrans_free->total &&
-			    seqtrans_free->total >= ALLOC_SEQTRANS * CULL_SEQTRANS)
-				k_cull_list(seqtrans_free);
 			K_WUNLOCK(seqtrans_free);
 		}
 	}
@@ -3152,7 +3241,7 @@ static void msgs_seq(SEQFOUND *found_msgs)
  *  sequence code */
 static bool update_seq(enum seq_num seq, uint64_t n_seqcmd,
 			uint64_t n_seqstt, uint64_t n_seqpid,
-			char *nam, tv_t *now, tv_t *cd, char *code,
+			char *nam, tv_t *now, tv_t *cd, INTRANSIENT *in_code,
 			int seqentryflags, char *msg)
 {
 	static SEQFOUND found[SEQ_MAX];
@@ -3178,7 +3267,7 @@ static bool update_seq(enum seq_num seq, uint64_t n_seqcmd,
 
 	LOGDEBUG("%s() SQ %c:%d/%s/%"PRIu64"/%"PRIu64"/%"PRIu64"/%s '%.80s...",
 		 __func__, SECHR(seqentryflags), seq, nam, n_seqcmd, n_seqstt,
-		 n_seqpid, code, st = safe_text(msg));
+		 n_seqpid, in_code->str, st = safe_text(msg));
 	FREENULL(st);
 
 	firstseq = newseq = expseq = gothigh = okhi = gotstale =
@@ -3203,7 +3292,7 @@ static bool update_seq(enum seq_num seq, uint64_t n_seqcmd,
 				goto gotseqset;
 			}
 		}
-	} 
+	}
 
 	// Need to setup a new seqset
 	newseq = true;
@@ -3465,7 +3554,7 @@ gotseqset:
 					}
 				}
 				seqdata->seqbase++;
-			} 
+			}
 			seqdata->maxseq++;
 		}
 		// store n_seqcmd
@@ -3579,7 +3668,7 @@ setitemdata:
 		seqentry->flags = seqentryflags;
 		copy_tv(&(seqentry->time), now);
 		copy_tv(&(seqentry->cd), cd);
-		STRNCPY(seqentry->code, code);
+		seqentry->in_code = in_code->str;
 		seqdata->ok++;
 		seqset->ok++;
 	}
@@ -3643,7 +3732,7 @@ setitemdata:
 				(level == LOG_DEBUG) ? "*" : EMPTY,
 				SECHR(seqentryflags), SECHR(seqentry_copy.flags),
 				nam, n_seqcmd, set, n_seqstt, t_buf, n_seqpid,
-				t_buf2, code,
+				t_buf2, in_code->str,
 				seqset_copy.seqdata[seq].minseq,
 				seqset_copy.seqdata[seq].maxseq,
 				seqset_copy.seqdata[seq].missing,
@@ -3679,10 +3768,10 @@ setitemdata:
 				found[seq].forced_msg = true;
 			}
 		}
-		// Check if there are any ranges >= 2s old (or forced)
+		// Check if there are any ranges >= the limit (or forced)
 		for (i = 0; i < SEQ_MAX; i++) {
 			if (found[i].forced_msg || (found[i].last.tv_sec != 0 &&
-			    tvdiff(&found_now, &(found[i].last)) >= 2.0)) {
+			    tvdiff(&found_now, &(found[i].last)) >= TRANSAGELIMIT)) {
 				memcpy(&(found_msgs[i]), &(found[i]),
 					sizeof(SEQFOUND));
 				// will be displayed, so erase it
@@ -3716,7 +3805,7 @@ setitemdata:
 				setnow(&found_now);
 				for (i = 0; i < SEQ_MAX; i++) {
 					if (found[i].last.tv_sec != 0 &&
-					    tvdiff(&found_now, &(found[i].last)) >= 2.0) {
+					    tvdiff(&found_now, &(found[i].last)) >= TRANSAGELIMIT) {
 						memcpy(&(found_msgs[i]),
 							&(found[i]),
 							sizeof(SEQFOUND));
@@ -3742,7 +3831,7 @@ setitemdata:
 		LOGWARNING("SEQ recovered %s %"PRIu64" set:%d/%"PRIu64
 			   "=%s/%"PRIu64" %s/%s",
 			   nam, n_seqcmd, set, n_seqstt, t_buf, n_seqpid,
-			   t_buf2, code);
+			   t_buf2, in_code->str);
 	}
 
 	if (gotstale || gotstalestart || gothigh) {
@@ -3755,7 +3844,7 @@ setitemdata:
 			   gothigh ? (okhi ? "OKHI" : "HIGH") : "stale",
 			   gotstalestart ? "STARTUP " : EMPTY,
 			   nam, n_seqcmd, set, n_seqstt, t_buf, n_seqpid,
-			   t_buf2, code,
+			   t_buf2, in_code->str,
 			   seqset_copy.seqdata[seq].minseq,
 			   seqset_copy.seqdata[seq].maxseq,
 			   seqset_copy.seqdata[seq].missing,
@@ -3827,13 +3916,10 @@ setitemdata:
 				   seqnam[seq], range_buf, set,
 				   n_seqstt, t_buf, n_seqpid,
 				   isrange ? "last: " : EMPTY,
-				   t_buf2, seqtrans->entry.code);
+				   t_buf2, seqtrans->entry.in_code);
 		}
 		K_WLOCK(seqtrans_free);
 		k_list_transfer_to_head(lost, seqtrans_free);
-		if (seqtrans_free->count == seqtrans_free->total &&
-		    seqtrans_free->total >= ALLOC_SEQTRANS * CULL_SEQTRANS)
-			k_cull_list(seqtrans_free);
 		K_WUNLOCK(seqtrans_free);
 	}
 
@@ -3874,13 +3960,13 @@ static enum cmd_values process_seq(MSGLINE *msgline)
 		dupall = update_seq(SEQ_ALL, msgline->n_seqall,
 				    msgline->n_seqstt, msgline->n_seqpid,
 				    SEQALL, &(msgline->now), &(msgline->cd),
-				    msgline->code, msgline->seqentryflags,
+				    msgline->in_code, msgline->seqentryflags,
 				    msgline->msg);
 	}
 	dupcmd = update_seq(ckdb_cmds[msgline->which_cmds].seq,
 			    msgline->n_seqcmd, msgline->n_seqstt,
 			    msgline->n_seqpid, msgline->seqcmdnam,
-			    &(msgline->now), &(msgline->cd), msgline->code,
+			    &(msgline->now), &(msgline->cd), msgline->in_code,
 			    msgline->seqentryflags, msgline->msg);
 
 	if (ignore_seqall)
@@ -3914,9 +4000,11 @@ static enum cmd_values process_seq(MSGLINE *msgline)
 
 static void setup_seq(K_ITEM *seqall, MSGLINE *msgline)
 {
-	K_ITEM *seqstt, *seqpid, *seqcmd, *i_code;
+	K_ITEM *seqstt, *seqpid, *seqcmd;
 	char *err = NULL, *st = NULL;
 	size_t len, off;
+	char reply[16] = "";
+	size_t siz = sizeof(reply);
 
 	msgline->n_seqall = atol(transfer_data(seqall));
 	if ((seqstt = find_transfer(msgline->trf_root, SEQSTT)))
@@ -3985,16 +4073,13 @@ static void setup_seq(K_ITEM *seqall, MSGLINE *msgline)
 
 	msgline->hasseq = true;
 
-	if ((i_code = find_transfer(msgline->trf_root, CODETRF))) {
-		msgline->code = transfer_data(i_code);
-		if (!(*(msgline->code)))
-			msgline->code = NULL;
-	}
-	if (!(msgline->code)) {
-		if ((i_code = find_transfer(msgline->trf_root, BYTRF)))
-			msgline->code = transfer_data(i_code);
-		else
-			msgline->code = EMPTY;
+	msgline->in_code = optional_in(msgline->trf_root, CODETRF, 1, NULL,
+					reply, siz);
+	if (!(msgline->in_code)) {
+		msgline->in_code = optional_in(msgline->trf_root, BYTRF,
+						0, NULL, reply, siz);
+		if (!msgline->in_code)
+			msgline->in_code = in_empty;
 	}
 }
 
@@ -4008,12 +4093,15 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 	K_ITEM *t_item = NULL, *cd_item = NULL, *seqall;
 	char *cmdptr, *idptr, *next, *eq, *end, *was;
 	char *data = NULL, *st = NULL, *st2 = NULL, *ip = NULL;
-	bool noid = false, intrans;
+	bool noid = false, intrans, anstr, wasend = false;
+	uint64_t ram2 = 0;
 	size_t siz;
 	int i;
 
+	siz = strlen(buf)+1;
 	K_WLOCK(msgline_free);
 	*ml_item = k_unlink_head_zero(msgline_free);
+	msgline_free->ram += siz;
 	K_WUNLOCK(msgline_free);
 	DATA_MSGLINE(msgline, *ml_item);
 	msgline->which_cmds = CMD_UNSET;
@@ -4023,6 +4111,7 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 	DATE_ZERO(&(msgline->broken));
 	DATE_ZERO(&(msgline->processed));
 	msgline->msg = strdup(buf);
+	msgline->msgsiz = siz;
 	msgline->seqentryflags = seqentryflags;
 
 	cmdptr = strdup(buf);
@@ -4058,7 +4147,7 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 	 *  you can ignore the access failed items by skipping items
 	 *  that start with a capital, since all (currently) are lower case
 	 *  however, command checks are case insensitive, so replaying
-	 *   the file will allow these commands, if they are present */
+	 *   the file will try these commands, if they are present */
 	if ((ckdb_cmds[msgline->which_cmds].access & access) == 0)
 		buf[0] = toupper(buf[0]);
 
@@ -4107,6 +4196,7 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 		next++;
 		// while we have a new quoted name
 		while (*next == JSON_STR) {
+			anstr = wasend = false;
 			was = next;
 			end = ++next;
 			// look for the end quote
@@ -4135,7 +4225,7 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 			// LOGERR of buf could be truncated
 			*(end++) = '\0';
 			K_WLOCK(transfer_free);
-			t_item = k_unlink_head(transfer_free);
+			t_item = k_unlink_head_zero(transfer_free);
 			K_WUNLOCK(transfer_free);
 			DATA_TRANSFER(transfer, t_item);
 			STRNCPY(transfer->name, next);
@@ -4157,6 +4247,7 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 			while (*next == ' ')
 				next++;
 			if (*next == JSON_STR) {
+				anstr = true;
 				end = ++next;
 				// A quoted value must have a terminating quote
 				while (*end && *end != JSON_STR) {
@@ -4236,6 +4327,11 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 				if (strcmp(transfer->name,
 					   intransient_fields[i]) == 0) {
 					intrans = true;
+					/* If this is the last field & it wasn't
+					 *  a string, it will wipe the closing
+					 *  JSON_END - so flag it */
+					if (!anstr && *(next + siz) == JSON_END)
+						wasend = true;
 					// This will affect 'was' if JSON_END is missing
 					*(next + siz) = '\0';
 					transfer->intransient =
@@ -4248,6 +4344,8 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 			if (!intrans) {
 				transfer->intransient = NULL;
 				if (siz >= sizeof(transfer->svalue)) {
+					transfer->msiz = siz+1;
+					ram2 += siz+1;
 					transfer->mvalue = malloc(siz+1);
 					STRNCPYSIZ(transfer->mvalue, next,
 						   siz+1);
@@ -4271,7 +4369,9 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 					next++;
 			}
 		}
-		if (*next != JSON_END) {
+		/* If the last field was intransient and not a string, then it
+		 *  wiped the closing JSON_END - but flagged that with wasend */
+		if (*next != JSON_END && (!wasend)) {
 			LOGERR("JSON_END '%c' was:%.32s... buf=%.32s...",
 				JSON_END, st = safe_text(next),
 				st2 = safe_text(buf));
@@ -4293,7 +4393,7 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 				*(eq++) = '\0';
 
 			K_WLOCK(transfer_free);
-			t_item = k_unlink_head(transfer_free);
+			t_item = k_unlink_head_zero(transfer_free);
 			K_WUNLOCK(transfer_free);
 			DATA_TRANSFER(transfer, t_item);
 			STRNCPY(transfer->name, data);
@@ -4313,6 +4413,8 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 			if (!intrans) {
 				transfer->intransient = NULL;
 				if (siz > sizeof(transfer->svalue)) {
+					ram2 += siz;
+					transfer->msiz = siz;
 					transfer->mvalue = malloc(siz);
 					STRNCPYSIZ(transfer->mvalue, eq, siz);
 				} else {
@@ -4323,8 +4425,9 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 
 			// Discard duplicates
 			if (find_in_ktree_nolock(msgline->trf_root, t_item, ctx)) {
-				if (transfer->mvalue != transfer->svalue)
-					FREENULL(transfer->mvalue);
+				if (transfer->msiz)
+					ram2 -= transfer->msiz;
+				free_transfer_data(transfer);
 				K_WLOCK(transfer_free);
 				k_add_head(transfer_free, t_item);
 				K_WUNLOCK(transfer_free);
@@ -4334,7 +4437,15 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 				add_to_ktree_nolock(msgline->trf_root, t_item);
 				k_add_head_nolock(msgline->trf_store, t_item);
 			}
+			t_item = NULL;
 		}
+	}
+
+	if (ram2) {
+		K_WLOCK(transfer_free);
+		transfer_free->ram += ram2;
+		K_WUNLOCK(transfer_free);
+		ram2 = 0;
 	}
 
 	seqall = find_transfer(msgline->trf_root, SEQALL);
@@ -4396,9 +4507,17 @@ static enum cmd_values breakdown(K_ITEM **ml_item, char *buf, tv_t *now,
 
 	return ckdb_cmds[msgline->which_cmds].cmd_val;
 nogood:
-	if (t_item) {
+	if (t_item || ram2) {
 		K_WLOCK(transfer_free);
-		k_add_head(transfer_free, t_item);
+		if (t_item) {
+			DATA_TRANSFER(transfer, t_item);
+			if (transfer->msiz)
+				ram2 -= transfer->msiz;
+			free_transfer_data(transfer);
+			k_add_head(transfer_free, t_item);
+		}
+		if (ram2)
+			transfer_free->ram += ram2;
 		K_WUNLOCK(transfer_free);
 	}
 	free(cmdptr);
@@ -4433,6 +4552,9 @@ static void *breaker(void *arg)
 	ts_t when, when_add;
 	int i, typ, mythread, done, tot, ret;
 	int breaker_delta = 0;
+	ts_t last_sleep = { 0L, 0L };
+	int last_sleep_ms = 0;
+	bool do_sleep = false;
 
 	setup = (struct breaker_setup *)(arg);
 	mythread = setup->thread;
@@ -4502,13 +4624,17 @@ static void *breaker(void *arg)
 	}
 	K_WUNLOCK(breakqueue_free);
 	while (!everyone_die) {
-		if (mythread && !breaker_running[typ][mythread]) 
+		if (mythread && !breaker_running[typ][mythread])
 			break;
 
 		K_WLOCK(breakqueue_free);
 		bq_item = NULL;
 		was_null = false;
-		if (mythread == 0 && reload && reload_breakdown_threads_delta != 0) {
+		if (breaker_sleep_stt.tv_sec > last_sleep.tv_sec) {
+			copy_ts(&last_sleep, &breaker_sleep_stt);
+			last_sleep_ms = breaker_sleep_ms;
+			do_sleep = true;
+		} else if (mythread == 0 && reload && reload_breakdown_threads_delta != 0) {
 			breaker_delta = reload_breakdown_threads_delta;
 			reload_breakdown_threads_delta = 0;
 		} else if (mythread == 0 && !reload && cmd_breakdown_threads_delta != 0) {
@@ -4537,6 +4663,12 @@ static void *breaker(void *arg)
 			}
 		}
 		K_WUNLOCK(breakqueue_free);
+
+		if (do_sleep) {
+			do_sleep = false;
+			cksleep_ms_r(&last_sleep, last_sleep_ms);
+			continue;
+		}
 
 		// TODO: deal with thread creation/shutdown failure
 		if (breaker_delta != 0) {
@@ -4701,10 +4833,6 @@ static void *breaker(void *arg)
 			pthread_cond_signal(&process_socket_waitcond);
 			mutex_unlock(&process_socket_waitlock);
 		}
-
-		if (breakqueue_free->count == breakqueue_free->total &&
-		    breakqueue_free->total >= ALLOC_BREAKQUEUE * CULL_BREAKQUEUE)
-			k_cull_list(breakqueue_free);
 		K_WUNLOCK(breakqueue_free);
 	}
 
@@ -4981,7 +5109,7 @@ static void summarise_blocks()
 				 "/%"PRId64"/%s/%s crosses block "
 				 "%"PRId32"/%"PRId64" boundary",
 				 __func__, workmarkers->markerid,
-				 workmarkers->poolinstance,
+				 workmarkers->in_poolinstance,
 				 workmarkers->workinfoidstart,
 				 workmarkers->workinfoidend,
 				 workmarkers->description,
@@ -6012,154 +6140,244 @@ static void process_sockd(PGconn *conn, K_ITEM *wq_item, enum reply_type reply_t
 	K_WUNLOCK(breakqueue_free);
 	FREENULL(ans);
 
-	free_msgline_data(ml_item, true, true);
+	free_msgline_data(ml_item, true);
 	K_WLOCK(msgline_free);
+	msgline_free->ram -= msgline->msgsiz;
 	k_add_head(msgline_free, ml_item);
 	K_WUNLOCK(msgline_free);
 
 	K_WLOCK(workqueue_free);
 	k_add_head(workqueue_free, wq_item);
-	if (workqueue_free->count == workqueue_free->total &&
-	    workqueue_free->total >= ALLOC_WORKQUEUE * CULL_WORKQUEUE)
-		k_cull_list(workqueue_free);
 	K_WUNLOCK(workqueue_free);
 
 	tick();
 }
 
-static void *clistener(__maybe_unused void *arg)
+struct listener_setup {
+	int bc;
+	int thread;
+};
+
+#define BC_B 0
+#define BC_C 1
+
+static pthread_t listener_pt[2][THREAD_LIMIT];
+static struct listener_setup listener_setup[2][THREAD_LIMIT];
+
+static void *listener_all(void *arg)
 {
+	static bool running[2][THREAD_LIMIT];
+
+	struct listener_setup *setup;
 	PGconn *conn = NULL;
 	K_ITEM *wq_item;
 	tv_t now1, now2;
 	char buf[128];
 	time_t now;
 	ts_t when, when_add;
-	int ret;
+	int i, typ, mythread, done, tot, ret;
+	int listener_delta = 0;
 
-	pthread_detach(pthread_self());
+	setup = (struct listener_setup *)(arg);
+	typ = setup->bc;
+	mythread = setup->thread;
 
-	snprintf(buf, sizeof(buf), "db%s_%s", dbcode, __func__);
+	snprintf(buf, sizeof(buf), "db%s_%c%02d%s",
+		 dbcode, (typ == BC_B) ? 'b' : 'c', mythread, "listen");
 	LOCK_INIT(buf);
 	rename_proc(buf);
 
-	LOGNOTICE("%s() processing", __func__);
+	if (mythread == 0) {
+		pthread_detach(pthread_self());
+
+		for (i = 1; i < THREAD_LIMIT; i++) {
+			listener_setup[typ][i].thread = i;
+			listener_setup[typ][i].bc = typ;
+			running[typ][i] = false;
+		}
+		running[typ][0] = true;
+
+		if (typ == BC_B)
+			listener_delta = btc_listener_threads - 1;
+		else
+			listener_delta = cmd_listener_threads - 1;
+
+		LOGNOTICE("%s() %s initialised - delta %d",
+			  __func__, (typ == BC_B) ? "btc" : "cmd", listener_delta);
+	}
+	LOGNOTICE("%s() %s processing", __func__, buf);
 
 	when_add.tv_sec = CMD_QUEUE_SLEEP_MS / 1000;
 	when_add.tv_nsec = (CMD_QUEUE_SLEEP_MS % 1000) * 1000000;
 
-	clistener_using_data = true;
+	if (typ == BC_B)
+		blistener_using_data = true;
+	else
+		clistener_using_data = true;
 
-	conn = dbconnect();
+	CKPQConn(&conn);
 	now = time(NULL);
 
 	while (!everyone_die) {
+		if (mythread && !running[typ][mythread])
+			break;
+
+		wq_item = NULL;
 		K_WLOCK(workqueue_free);
-		wq_item = k_unlink_head(cmd_workqueue_store);
+		if (mythread == 0 && typ == BC_B &&
+		    btc_listener_threads_delta != 0) {
+			listener_delta = btc_listener_threads_delta;
+			btc_listener_threads_delta = 0;
+		} else if (mythread == 0 && typ == BC_C &&
+		    cmd_listener_threads_delta != 0) {
+			listener_delta = cmd_listener_threads_delta;
+			cmd_listener_threads_delta = 0;
+		} else {
+			if (typ == BC_B)
+				wq_item = k_unlink_head(btc_workqueue_store);
+			else
+				wq_item = k_unlink_head(cmd_workqueue_store);
+		}
 		K_WUNLOCK(workqueue_free);
+
+		// TODO: deal with thread creation/shutdown failure
+		if (listener_delta != 0) {
+			if (listener_delta > 0) {
+				// Add threads
+				tot = 1;
+				done = 0;
+				for (i = 1; i < THREAD_LIMIT; i++) {
+					if (!running[typ][i]) {
+						if (listener_delta > 0) {
+							listener_delta--;
+							running[typ][i] = true;
+							create_pthread(&(listener_pt[typ][i]),
+									listener_all,
+									&(listener_setup[typ][i]));
+							done++;
+							tot++;
+						}
+					} else
+						tot++;
+				}
+				LOGWARNING("%s() created %d %s thread%s total=%d"
+#if LOCK_CHECK
+					   " next_thread_id=%d"
+#endif
+					   , __func__,
+					   done,
+					   (typ == BC_B) ? "btc" : "cmd",
+					   (done == 1) ? EMPTY : "s",
+					   tot
+#if LOCK_CHECK
+					   , next_thread_id
+#endif
+					   );
+			} else {
+				// Notify and wait for each to exit
+				tot = 1;
+				done = 0;
+				for (i = THREAD_LIMIT - 1; i > 0; i--) {
+					if (running[typ][i]) {
+						if (listener_delta < 0) {
+							listener_delta++;
+							LOGNOTICE("%s() %s stopping %d",
+								  __func__,
+								  (typ == BC_B) ? "btc" : "cmd",
+								  i);
+							running[typ][i] = false;
+							join_pthread(listener_pt[typ][i]);
+							done++;
+						} else
+							tot++;
+					}
+				}
+				LOGWARNING("%s() stopped %d %s thread%s total=%d"
+#if LOCK_CHECK
+					   " next_thread_id=%d"
+#endif
+					   , __func__,
+					   done,
+					   (typ == BC_B) ? "btc" : "cmd",
+					   (done == 1) ? EMPTY : "s",
+					   tot
+#if LOCK_CHECK
+					   , next_thread_id
+#endif
+					   );
+			}
+			listener_delta = 0;
+			continue;
+		}
 
 		// Don't keep a connection for more than ~10s
 		if ((time(NULL) - now) > 10) {
-			PQfinish(conn);
-			conn = dbconnect();
+			CKPQFinish(&conn);
+			CKPQConn(&conn);
 			now = time(NULL);
 		}
 
 		if (wq_item) {
 			setnow(&now1);
-			process_sockd(conn, wq_item, REPLIER_CMD);
+			process_sockd(conn, wq_item,
+				      (typ == BC_B) ? REPLIER_BTC : REPLIER_CMD);
 			setnow(&now2);
-			clis_us += us_tvdiff(&now2, &now1);
-			clis_processed++;
+			ck_wlock(&listener_all_lock);
+			if (typ == BC_B) {
+				blis_us += us_tvdiff(&now2, &now1);
+				blis_processed++;
+			} else {
+				clis_us += us_tvdiff(&now2, &now1);
+				clis_processed++;
+			}
+			ck_wunlock(&listener_all_lock);
 		} else {
 			setnowts(&when);
 			timeraddspec(&when, &when_add);
 
-			mutex_lock(&wq_cmd_waitlock);
-			ret = cond_timedwait(&wq_cmd_waitcond,
-					     &wq_cmd_waitlock, &when);
-			if (ret == 0)
-				wq_cmd_wakes++;
-			else if (errno == ETIMEDOUT)
-				wq_cmd_timeouts++;
-			mutex_unlock(&wq_cmd_waitlock);
+			if (typ == BC_B) {
+				mutex_lock(&wq_btc_waitlock);
+				ret = cond_timedwait(&wq_btc_waitcond,
+						     &wq_btc_waitlock, &when);
+				if (ret == 0)
+					wq_btc_wakes++;
+				else if (errno == ETIMEDOUT)
+					wq_btc_timeouts++;
+				mutex_unlock(&wq_btc_waitlock);
+			} else {
+				mutex_lock(&wq_cmd_waitlock);
+				ret = cond_timedwait(&wq_cmd_waitcond,
+						     &wq_cmd_waitlock, &when);
+				if (ret == 0)
+					wq_cmd_wakes++;
+				else if (errno == ETIMEDOUT)
+					wq_cmd_timeouts++;
+				mutex_unlock(&wq_cmd_waitlock);
+			}
 		}
 	}
+	CKPQFinish(&conn);
 
-	LOGNOTICE("%s() exiting, processed %"PRIu64, __func__, clis_processed);
-
-	clistener_using_data = false;
-
-	if (conn)
-		PQfinish(conn);
-
-	return NULL;
-}
-
-static void *blistener(__maybe_unused void *arg)
-{
-	PGconn *conn = NULL;
-	K_ITEM *wq_item;
-	tv_t now1, now2;
-	char buf[128];
-	time_t now;
-	ts_t when, when_add;
-	int ret;
-
-	pthread_detach(pthread_self());
-
-	snprintf(buf, sizeof(buf), "db%s_%s", dbcode, __func__);
-	LOCK_INIT(buf);
-	rename_proc(buf);
-
-	LOGNOTICE("%s() processing", __func__);
-
-	when_add.tv_sec = CMD_QUEUE_SLEEP_MS / 1000;
-	when_add.tv_nsec = (CMD_QUEUE_SLEEP_MS % 1000) * 1000000;
-
-	blistener_using_data = true;
-
-	now = time(NULL);
-
-	while (!everyone_die) {
-		K_WLOCK(workqueue_free);
-		wq_item = k_unlink_head(btc_workqueue_store);
-		K_WUNLOCK(workqueue_free);
-
-		// Don't keep a connection for more than ~10s
-		if ((time(NULL) - now) > 10) {
-			PQfinish(conn);
-			conn = dbconnect();
-			now = time(NULL);
+	if (mythread != 0)
+		LOGNOTICE("%s() %s exiting", __func__, buf);
+	else {
+		for (i = 1; i < THREAD_LIMIT; i++) {
+			if (running[typ][i]) {
+				running[typ][i] = false;
+				LOGNOTICE("%s() %s waiting for %d",
+					  __func__, buf, i);
+				join_pthread(listener_pt[typ][i]);
+			}
 		}
 
-		if (wq_item) {
-			setnow(&now1);
-			process_sockd(conn, wq_item, REPLIER_BTC);
-			setnow(&now2);
-			blis_us += us_tvdiff(&now2, &now1);
-			blis_processed++;
+		if (typ == BC_B) {
+			LOGNOTICE("%s() %s exiting, processed %"PRIu64, __func__, buf, blis_processed);
+			blistener_using_data = false;
 		} else {
-			setnowts(&when);
-			timeraddspec(&when, &when_add);
-
-			mutex_lock(&wq_btc_waitlock);
-			ret = cond_timedwait(&wq_btc_waitcond,
-					     &wq_btc_waitlock, &when);
-			if (ret == 0)
-				wq_btc_wakes++;
-			else if (errno == ETIMEDOUT)
-				wq_btc_timeouts++;
-			mutex_unlock(&wq_btc_waitlock);
+			LOGNOTICE("%s() %s exiting, processed %"PRIu64, __func__, buf, clis_processed);
+			clistener_using_data = false;
 		}
 	}
-
-	LOGNOTICE("%s() exiting, processed %"PRIu64, __func__, blis_processed);
-
-	blistener_using_data = false;
-
-	if (conn)
-		PQfinish(conn);
 
 	return NULL;
 }
@@ -6227,6 +6445,7 @@ static void *process_socket(__maybe_unused void *arg)
 				case CMD_CHKPASS:
 				case CMD_GETATTS:
 				case CMD_THREADS:
+				case CMD_PAUSE:
 				case CMD_HOMEPAGE:
 				case CMD_QUERY:
 					break;
@@ -6428,6 +6647,7 @@ static void *process_socket(__maybe_unused void *arg)
 			case CMD_EVENTS:
 			case CMD_HIGH:
 			case CMD_THREADS:
+			case CMD_PAUSE:
 			case CMD_QUERY:
 				msgline->sockd = bq->sockd;
 				bq->sockd = -1;
@@ -6587,8 +6807,11 @@ static void *process_socket(__maybe_unused void *arg)
 						WORKQUEUE *wq;
 						DATA_WORKQUEUE(wq, wq2_item);
 						K_ITEM *ml_item = wq->msgline_item;
-						free_msgline_data(ml_item, true, false);
+						MSGLINE *ml;
+						DATA_MSGLINE(ml, ml_item);
+						free_msgline_data(ml_item, true);
 						K_WLOCK(msgline_free);
+						msgline_free->ram -= ml->msgsiz;
 						k_add_head(msgline_free, ml_item);
 						K_WUNLOCK(msgline_free);
 						K_WLOCK(workqueue_free);
@@ -6627,8 +6850,11 @@ skippy:
 			dec_sockd = false;
 
 		if (bq->ml_item) {
-			free_msgline_data(bq->ml_item, true, true);
+			MSGLINE *ml;
+			DATA_MSGLINE(ml, bq->ml_item);
+			free_msgline_data(bq->ml_item, true);
 			K_WLOCK(msgline_free);
+			msgline_free->ram -= ml->msgsiz;
 			k_add_head(msgline_free, bq->ml_item);
 			K_WUNLOCK(msgline_free);
 			bq->ml_item = NULL;
@@ -6639,6 +6865,7 @@ skippy:
 		if (dec_sockd)
 			sockd_count--;
 		cmd_processing--;
+		breakqueue_free->ram -= bq->bufsiz;
 		k_add_head(breakqueue_free, bq_item);
 		K_WUNLOCK(breakqueue_free);
 	}
@@ -6772,6 +6999,7 @@ static void *sockrun(void *arg)
 			K_WUNLOCK(breakqueue_free);
 			DATA_BREAKQUEUE(bq, bq_item);
 			bq->buf = buf;
+			bq->bufsiz = strlen(buf)+1;
 			bq->source = (char *)(this->gdata);
 			bq->access = *(int *)(this->cdata);
 			copy_tv(&(bq->accepted), &nowacc);
@@ -6782,6 +7010,7 @@ static void *sockrun(void *arg)
 			if (max_sockd_count < ++sockd_count)
 				max_sockd_count = sockd_count;
 			k_add_tail(cmd_breakqueue_store, bq_item);
+			breakqueue_free->ram += bq->bufsiz;
 			K_WUNLOCK(breakqueue_free);
 			setnow(&now2);
 			sock_lock_br_us[thissock] += us_tvdiff(&now2, &now1);
@@ -6808,7 +7037,7 @@ static void *socksetup(__maybe_unused void *arg)
 {
 	pthread_t prep_pt, crep_pt, brep_pt;
 	enum reply_type p_typ, c_typ, b_typ;
-	pthread_t clis_pt, blis_pt, proc_pt;
+	pthread_t proc_pt;
 	pthread_t psock_pt, wsock_pt, csock_pt;
 	char nbuf[64];
 
@@ -6835,9 +7064,15 @@ static void *socksetup(__maybe_unused void *arg)
 		LOGWARNING("%s() Start processing...", __func__);
 		socksetup_using_data = true;
 
-		create_pthread(&clis_pt, clistener, NULL);
+		listener_setup[BC_B][0].bc = BC_B;
+		listener_setup[BC_B][0].thread = 0;
+		create_pthread(&listener_pt[BC_B][0], listener_all,
+				&(listener_setup[BC_B][0]));
 
-		create_pthread(&blis_pt, blistener, NULL);
+		listener_setup[BC_C][0].bc = BC_C;
+		listener_setup[BC_C][0].thread = 0;
+		create_pthread(&listener_pt[BC_C][0], listener_all,
+				&(listener_setup[BC_C][0]));
 
 		create_pthread(&proc_pt, process_socket, NULL);
 
@@ -6927,6 +7162,7 @@ static void process_reload_item(PGconn *conn, K_ITEM *bq_item)
 		case CMD_EVENTS:
 		case CMD_HIGH:
 		case CMD_THREADS:
+		case CMD_PAUSE:
 			LOGERR("%s() INVALID message line %"PRIu64
 				" ignored '%.42s...",
 				__func__, bq->count,
@@ -6976,8 +7212,10 @@ static void process_reload_item(PGconn *conn, K_ITEM *bq_item)
 	}
 
 	if (bq->ml_item) {
-		free_msgline_data(bq->ml_item, true, true);
+		DATA_MSGLINE(msgline, bq->ml_item);
+		free_msgline_data(bq->ml_item, true);
 		K_WLOCK(msgline_free);
+		msgline_free->ram -= msgline->msgsiz;
 		k_add_head(msgline_free, bq->ml_item);
 		K_WUNLOCK(msgline_free);
 		bq->ml_item = NULL;
@@ -6993,6 +7231,7 @@ static void *process_reload(__maybe_unused void *arg)
 
 	PGconn *conn = NULL;
 	K_ITEM *bq_item = NULL;
+	BREAKQUEUE *bq;
 	char buf[128];
 	time_t now;
 	ts_t when, when_add;
@@ -7026,7 +7265,7 @@ static void *process_reload(__maybe_unused void *arg)
 	when_add.tv_sec = RELOAD_QUEUE_SLEEP_MS / 1000;
 	when_add.tv_nsec = (RELOAD_QUEUE_SLEEP_MS % 1000) * 1000000;
 
-	conn = dbconnect();
+	CKPQConn(&conn);
 	now = time(NULL);
 
 	while (!everyone_die) {
@@ -7130,23 +7369,23 @@ static void *process_reload(__maybe_unused void *arg)
 
 		// Don't keep a connection for more than ~10s ... of processing
 		if ((time(NULL) - now) > 10) {
-			PQfinish(conn);
-			conn = dbconnect();
+			CKPQFinish(&conn);
+			CKPQConn(&conn);
 			now = time(NULL);
 		}
 
 		process_reload_item(conn, bq_item);
 
+		DATA_BREAKQUEUE(bq, bq_item);
 		K_WLOCK(breakqueue_free);
 		reload_processing--;
+		breakqueue_free->ram -= bq->bufsiz;
 		k_add_head(breakqueue_free, bq_item);
 		K_WUNLOCK(breakqueue_free);
 
 		tick();
 	}
-
-	if (conn)
-		PQfinish(conn);
+	CKPQFinish(&conn);
 
 	if (mythread == 0) {
 		for (i = 1; i < THREAD_LIMIT; i++) {
@@ -7214,6 +7453,7 @@ static void reload_line(char *filename, char *buf, uint64_t count)
 		// release the lock since strdup could be slow, but rarely
 		DATA_BREAKQUEUE(bq, bq_item);
 		bq->buf = strdup(buf);
+		bq->bufsiz = strlen(buf)+1;
 		// reloads are normally all pool data but access can be changed
 		bq->source = (char *)ispool;
 		bq->access = reload_access;
@@ -7227,6 +7467,7 @@ static void reload_line(char *filename, char *buf, uint64_t count)
 		K_WLOCK(breakqueue_free);
 		k_add_tail(reload_breakqueue_store, bq_item);
 		qcount = reload_breakqueue_store->count;
+		breakqueue_free->ram += bq->bufsiz;
 		K_WUNLOCK(breakqueue_free);
 
 		mutex_lock(&bq_reload_waitlock);
@@ -7389,7 +7630,7 @@ static bool reload_from(tv_t *start, const tv_t *finish)
 		 * Also since ckpool messages are not in order, we could be
 		 *  aborting early and not get the few slightly later out of
 		 *  order messages in the log file */
-		while (!everyone_die && 
+		while (!everyone_die &&
 			logline(reload_buf, MAX_READ, fp, filename)) {
 				reload_line(filename, reload_buf, ++count);
 
@@ -7609,16 +7850,14 @@ static void process_queued(PGconn *conn, K_ITEM *wq_item)
 			break;
 	}
 
-	free_msgline_data(ml_item, true, true);
+	free_msgline_data(ml_item, true);
 	K_WLOCK(msgline_free);
+	msgline_free->ram -= msgline->msgsiz;
 	k_add_head(msgline_free, ml_item);
 	K_WUNLOCK(msgline_free);
 
 	K_WLOCK(workqueue_free);
 	k_add_head(workqueue_free, wq_item);
-	if (workqueue_free->count == workqueue_free->total &&
-	    workqueue_free->total >= ALLOC_WORKQUEUE * CULL_WORKQUEUE)
-		k_cull_list(workqueue_free);
 	K_WUNLOCK(workqueue_free);
 }
 
@@ -7627,9 +7866,6 @@ static void free_lost(SEQDATA *seqdata)
 	if (seqdata->reload_lost) {
 		K_WLOCK(seqtrans_free);
 		k_list_transfer_to_head(seqdata->reload_lost, seqtrans_free);
-		if (seqtrans_free->count == seqtrans_free->total &&
-		    seqtrans_free->total >= ALLOC_SEQTRANS * CULL_SEQTRANS)
-			k_cull_list(seqtrans_free);
 		K_WUNLOCK(seqtrans_free);
 		seqdata->reload_lost = NULL;
 	}
@@ -7684,7 +7920,7 @@ static void *pqproc(void *arg)
 	when_add.tv_nsec = (CMD_QUEUE_SLEEP_MS % 1000) * 1000000;
 
 	now = time(NULL);
-	conn = dbconnect();
+	CKPQConn(&conn);
 	wqgot = 0;
 
 	// Override checking until pool0 is complete
@@ -7797,8 +8033,8 @@ static void *pqproc(void *arg)
 		/* Don't keep a connection for more than ~10s or ~10000 items
 		 *  but always have a connection open */
 		if ((time(NULL) - now) > 10 || wqgot > 10000) {
-			PQfinish(conn);
-			conn = dbconnect();
+			CKPQFinish(&conn);
+			CKPQConn(&conn);
 			now = time(NULL);
 			wqgot = 0;
 		}
@@ -7868,9 +8104,7 @@ static void *pqproc(void *arg)
 			mutex_unlock(&wq_pool_waitlock);
 		}
 	}
-
-	if (conn)
-		PQfinish(conn);
+	CKPQFinish(&conn);
 
 	if (mythread == 0) {
 		for (i = 1; i < THREAD_LIMIT; i++) {
@@ -8062,7 +8296,7 @@ static bool make_keysummaries()
 
 	LOGDEBUG("%s() processing workmarkers %"PRId64"/%s/End %"PRId64"/"
 		 "Stt %"PRId64"/%s/%s",
-		 __func__, workmarkers->markerid, workmarkers->poolinstance,
+		 __func__, workmarkers->markerid, workmarkers->in_poolinstance,
 		 workmarkers->workinfoidend, workmarkers->workinfoidstart,
 		 workmarkers->description, workmarkers->status);
 
@@ -8954,6 +9188,7 @@ static struct option long_options[] = {
 	// override calculated value
 	{ "breakdown-threads",	required_argument,	0,	'B' },
 	{ "config",		required_argument,	0,	'c' },
+	{ "cmd-listener-threads", required_argument,	0,	'C' },
 	{ "dbname",		required_argument,	0,	'd' },
 	{ "minsdiff",		required_argument,	0,	'D' },
 	{ "free",		required_argument,	0,	'f' },
@@ -9036,7 +9271,7 @@ int main(int argc, char **argv)
 	memset(&ckpcmd, 0, sizeof(ckp));
 	ckp.loglevel = LOG_NOTICE;
 
-	while ((c = getopt_long(argc, argv, "a:Ab:B:c:d:D:f:ghi:IkK:l:L:mM:n:N:o:p:P:q:Q:r:R:s:S:t:Tu:U:vw:xXyY:", long_options, &i)) != -1) {
+	while ((c = getopt_long(argc, argv, "a:Ab:B:c:C:d:D:f:ghi:IkK:l:L:mM:n:N:o:p:P:q:Q:r:R:s:S:t:Tu:U:vw:xXyY:", long_options, &i)) != -1) {
 		switch(c) {
 			case '?':
 			case ':':
@@ -9078,6 +9313,18 @@ int main(int argc, char **argv)
 				break;
 			case 'c':
 				ckp.config = strdup(optarg);
+				break;
+			case 'C':
+				{
+					int cl = atoi(optarg);
+					if (cl < 1 || cl > THREAD_LIMIT) {
+						quit(1, "Invalid listener "
+						     "thread count %d "
+						     "- must be >0 and <=%d",
+						     cl, THREAD_LIMIT);
+					}
+					cmd_listener_threads = cl;
+				}
 				break;
 			case 'd':
 				db_name = strdup(optarg);
@@ -9133,7 +9380,7 @@ int main(int argc, char **argv)
 			 *  to have poolinstance set to the given -i value
 			 *  since they will be blank */
 			case 'i':
-				poolinstance = (const char *)strdup(optarg);
+				sys_poolinstance = (const char *)strdup(optarg);
 				break;
 			case 'I':
 				ignore_seq = true;
@@ -9426,8 +9673,10 @@ int main(int argc, char **argv)
 
 	cklock_init(&breakdown_lock);
 	cklock_init(&replier_lock);
+	cklock_init(&listener_all_lock);
 	cklock_init(&last_lock);
 	cklock_init(&btc_lock);
+	cklock_init(&pgdb_pause_lock);
 	cklock_init(&poolinstance_lock);
 	cklock_init(&seq_found_lock);
 

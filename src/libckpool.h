@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016 Con Kolivas
+ * Copyright 2014-2017 Con Kolivas
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -247,6 +247,14 @@ void logmsg(int loglevel, const char *fmt, ...);
 #define UNIX_READ_TIMEOUT 5
 #define UNIX_WRITE_TIMEOUT 10
 
+#define MIN1	60
+#define MIN5	300
+#define MIN15	900
+#define HOUR	3600
+#define HOUR6	21600
+#define DAY	86400
+#define WEEK	604800
+
 /* Share error values */
 
 enum share_err {
@@ -366,7 +374,7 @@ static inline void json_intcpy(int *i, json_t *val, const char *key)
 
 static inline void json_strdup(char **buf, json_t *val, const char *key)
 {
-	*buf = strdup(json_string_value(json_object_get(val, key)));
+	*buf = strdup(json_string_value(json_object_get(val, key)) ? : "");
 }
 
 /* Helpers for setting a field will check for valid entry and print an error
@@ -586,6 +594,7 @@ int ms_tvdiff(tv_t *end, tv_t *start);
 double tvdiff(tv_t *end, tv_t *start);
 
 void decay_time(double *f, double fadd, double fsecs, double interval);
+double sane_tdiff(tv_t *end, tv_t *start);
 void suffix_string(double val, char *buf, size_t bufsiz, int sigdigits);
 
 double le256todouble(const uchar *target);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016 Con Kolivas
+ * Copyright 2014-2017 Con Kolivas
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -88,6 +88,8 @@ struct connsock {
 	ckpool_t *ckp;
 	/* Semaphore used to serialise request/responses */
 	sem_t sem;
+
+	bool alive;
 };
 
 typedef struct connsock connsock_t;
@@ -174,6 +176,8 @@ struct ckpool_instance {
 
 	/* Logger message queue */
 	ckmsgq_t *logger;
+	ckmsgq_t *console_logger;
+
 	/* Process instance data of parent/child processes */
 	proc_instance_t main;
 
@@ -181,12 +185,18 @@ struct ckpool_instance {
 	proc_instance_t stratifier;
 	proc_instance_t connector;
 
+	bool generator_ready;
+	bool stratifier_ready;
+	bool connector_ready;
+
 	/* Threads of main process */
 	pthread_t pth_listener;
 	pthread_t pth_watchdog;
 
 	/* Are we running in trusted remote node mode */
 	bool remote;
+	/* Does our upstream pool in remote mode have ckdb */
+	bool upstream_ckdb;
 
 	/* Are we running in node proxy mode */
 	bool node;
@@ -284,6 +294,9 @@ enum stratum_msgtype {
 	SM_BLOCK,
 	SM_PONG,
 	SM_TRANSACTIONS,
+	SM_SHAREERR,
+	SM_WORKERSTATS,
+	SM_REQTXNS,
 	SM_NONE
 };
 
@@ -307,6 +320,9 @@ static const char __maybe_unused *stratum_msgs[] = {
 	"block",
 	"pong",
 	"transactions",
+	"shareerr",
+	"workerstats",
+	"reqtxns",
 	""
 };
 
@@ -318,9 +334,11 @@ static const char __maybe_unused *stratum_msgs[] = {
 
 #define SAFE_HASH_OVERHEAD(HASHLIST) (HASHLIST ? HASH_OVERHEAD(hh, HASHLIST) : 0)
 
+void get_timestamp(char *stamp);
+
 ckmsgq_t *create_ckmsgq(ckpool_t *ckp, const char *name, const void *func);
 ckmsgq_t *create_ckmsgqs(ckpool_t *ckp, const char *name, const void *func, const int count);
-void _ckmsgq_add(ckmsgq_t *ckmsgq, void *data, const char *file, const char *func, const int line);
+bool _ckmsgq_add(ckmsgq_t *ckmsgq, void *data, const char *file, const char *func, const int line);
 #define ckmsgq_add(ckmsgq, data) _ckmsgq_add(ckmsgq, data, __FILE__, __func__, __LINE__)
 bool ckmsgq_empty(ckmsgq_t *ckmsgq);
 unix_msg_t *get_unix_msg(proc_instance_t *pi);
@@ -332,8 +350,8 @@ void empty_buffer(connsock_t *cs);
 int set_sendbufsize(ckpool_t *ckp, const int fd, const int len);
 int set_recvbufsize(ckpool_t *ckp, const int fd, const int len);
 int read_socket_line(connsock_t *cs, float *timeout);
-void _send_proc(const proc_instance_t *pi, const char *msg, const char *file, const char *func, const int line);
-#define send_proc(pi, msg) _send_proc(&(pi), msg, __FILE__, __func__, __LINE__)
+void _queue_proc(proc_instance_t *pi, const char *msg, const char *file, const char *func, const int line);
+#define send_proc(pi, msg) _queue_proc(&(pi), msg, __FILE__, __func__, __LINE__)
 char *_send_recv_proc(const proc_instance_t *pi, const char *msg, int writetimeout, int readtimedout,
 		      const char *file, const char *func, const int line);
 #define send_recv_proc(pi, msg) _send_recv_proc(&(pi), msg, UNIX_WRITE_TIMEOUT, UNIX_READ_TIMEOUT, __FILE__, __func__, __LINE__)
@@ -344,6 +362,8 @@ char *_ckdb_msg_call(const ckpool_t *ckp, const char *msg,  const char *file, co
 #define ckdb_msg_call(ckp, msg) _ckdb_msg_call(ckp, msg, __FILE__, __func__, __LINE__)
 
 json_t *json_rpc_call(connsock_t *cs, const char *rpc_req);
+json_t *json_rpc_response(connsock_t *cs, const char *rpc_req);
+void json_rpc_msg(connsock_t *cs, const char *rpc_req);
 bool send_json_msg(connsock_t *cs, const json_t *json_msg);
 json_t *json_msg_result(const char *msg, json_t **res_val, json_t **err_val);
 
@@ -369,5 +389,12 @@ static inline void ckpool_api(ckpool_t __maybe_unused *ckp, apimsg_t __maybe_unu
 static inline json_t *json_encode_errormsg(json_error_t __maybe_unused *err_val) { return NULL; };
 static inline json_t *json_errormsg(const char __maybe_unused *fmt, ...) { return NULL; };
 static inline void send_api_response(json_t __maybe_unused *val, const int __maybe_unused sockd) {};
+
+/* Subclients have client_ids in the high bits. Returns the value of the parent
+ * client if one exists. */
+static inline int64_t subclient(const int64_t client_id)
+{
+	return (client_id >> 32);
+}
 
 #endif /* CKPOOL_H */

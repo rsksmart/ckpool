@@ -12,11 +12,18 @@
 
 // Data free functions (added here as needed)
 
-void free_msgline_data(K_ITEM *item, bool t_lock, bool t_cull)
+void free_transfer_data(TRANSFER *transfer)
+{
+	if (transfer->msiz)
+		FREENULL(transfer->mvalue);
+}
+
+void free_msgline_data(K_ITEM *item, bool t_lock)
 {
 	K_ITEM *t_item = NULL;
 	TRANSFER *transfer;
 	MSGLINE *msgline;
+	uint64_t ram2 = 0;
 
 	DATA_MSGLINE(msgline, item);
 	if (msgline->trf_root)
@@ -25,23 +32,14 @@ void free_msgline_data(K_ITEM *item, bool t_lock, bool t_cull)
 		t_item = STORE_HEAD_NOLOCK(msgline->trf_store);
 		while (t_item) {
 			DATA_TRANSFER(transfer, t_item);
-			if (transfer->mvalue != transfer->svalue) {
-				if (transfer->intransient) {
-					transfer->intransient = NULL;
-					transfer->mvalue = NULL;
-				} else
-					FREENULL(transfer->mvalue);
-			}
+			ram2 += transfer->msiz;
+			free_transfer_data(transfer);
 			t_item = t_item->next;
 		}
 		if (t_lock)
 			K_WLOCK(transfer_free);
+		transfer_free->ram -= ram2;
 		k_list_transfer_to_head(msgline->trf_store, transfer_free);
-		if (t_cull) {
-			if (transfer_free->count == transfer_free->total &&
-			    transfer_free->total >= ALLOC_TRANSFER * CULL_TRANSFER)
-				k_cull_list(transfer_free);
-		}
 		if (t_lock)
 			K_WUNLOCK(transfer_free);
 		msgline->trf_store = k_free_store(msgline->trf_store);
@@ -123,8 +121,6 @@ void free_workmarkers_data(K_ITEM *item)
 	WORKMARKERS *workmarkers;
 
 	DATA_WORKMARKERS(workmarkers, item);
-	LIST_MEM_SUB(workmarkers_free, workmarkers->poolinstance);
-	FREENULL(workmarkers->poolinstance);
 	LIST_MEM_SUB(workmarkers_free, workmarkers->description);
 	FREENULL(workmarkers->description);
 }
@@ -134,8 +130,6 @@ void free_marks_data(K_ITEM *item)
 	MARKS *marks;
 
 	DATA_MARKS(marks, item);
-	LIST_MEM_SUB(marks_free, marks->poolinstance);
-	FREENULL(marks->poolinstance);
 	LIST_MEM_SUB(marks_free, marks->description);
 	FREENULL(marks->description);
 	LIST_MEM_SUB(marks_free, marks->extra);
@@ -511,8 +505,26 @@ void _txt_to_double(char *nam, char *fld, double *data, size_t siz, WHERE_FFL_AR
 
 char *_data_to_buf(enum data_type typ, void *data, char *buf, size_t siz, WHERE_FFL_ARGS)
 {
+	static bool had_null = false;
 	struct tm tm;
 	double d;
+
+	// Return an empty string but only log a console message the first time
+	if (!data) {
+		// locking doesn't matter - if we get extra messages
+		if (!had_null) {
+			had_null = true;
+			LOGEMERG("%s() BUG - called with null data - check"
+				 " log file" WHERE_FFL,
+				 __func__, WHERE_FFL_PASS);
+		}
+		LOGNOTICE("%s() BUG - called with null data typ=%d" WHERE_FFL,
+			  __func__, (int)typ, WHERE_FFL_PASS);
+		if (!buf)
+			buf = malloc(1);
+		*buf = '\0';
+		return buf;
+	}
 
 	if (!buf) {
 		switch (typ) {
@@ -731,7 +743,8 @@ cmp_t cmp_intransient(K_ITEM *a, K_ITEM *b)
 	return CMP_STR(ia->str, ib->str);
 }
 
-INTRANSIENT *_get_intransient(char *fldnam, char *value, size_t siz, WHERE_FFL_ARGS)
+INTRANSIENT *_get_intransient(const char *fldnam, char *value, size_t siz,
+				WHERE_FFL_ARGS)
 {
 	INTRANSIENT intransient, *in = NULL;
 	K_ITEM look, *i_item, *n_item;
@@ -816,6 +829,37 @@ char *_intransient_str(char *fldnam, char *value, WHERE_FFL_ARGS)
 	return in->str;
 }
 
+void dsp_msgline(K_ITEM *item, FILE *stream)
+{
+	K_ITEM *t_item;
+	MSGLINE *m;
+	int c;
+
+	if (!item)
+		fprintf(stream, "%s() called with (null) item\n", __func__);
+	else {
+		DATA_MSGLINE(m, item);
+		if (m->trf_store)
+			c = m->trf_store->count;
+		else
+			c = 0;
+
+		fprintf(stream, " which=%d id='%s' cmd='%s' msg='%.42s' "
+				"trf_store=%c count=%d\n",
+				m->which_cmds, m->id, m->cmd, m->msg,
+				m->trf_store ? 'Y' : 'N', c);
+
+		if (m->trf_store) {
+			t_item = m->trf_store->head;
+			while (t_item) {
+				fputc(' ', stream);
+				dsp_transfer(t_item, stream);
+				t_item = t_item->next;
+			}
+		}
+	}
+}
+
 // For mutiple variable function calls that need the data
 char *_transfer_data(K_ITEM *item, WHERE_FFL_ARGS)
 {
@@ -856,9 +900,10 @@ void dsp_transfer(K_ITEM *item, FILE *stream)
 		fprintf(stream, "%s() called with (null) item\n", __func__);
 	else {
 		DATA_TRANSFER(t, item);
-		fprintf(stream, " name='%s' mvalue='%s' malloc=%c\n",
-				t->name, t->mvalue,
-				(t->svalue == t->mvalue) ? 'N' : 'Y');
+		fprintf(stream, " name='%s' mvalue='%s' malloc=%"PRIu64
+				" intransient=%c\n",
+				t->name, t->mvalue, t->msiz,
+				t->intransient ? 'Y' : 'N');
 	}
 }
 
@@ -1206,7 +1251,8 @@ K_ITEM *_find_create_workerstatus(bool gotlock, bool alertcreate,
 
 			bzero(row, sizeof(*row));
 			row->userid = userid;
-			row->in_workername = workername;
+			row->in_workername = intransient_str("workername",
+							     workername);
 
 			add_to_ktree(workerstatus_root, ws_item);
 			k_add_head(workerstatus_store, ws_item);
@@ -2141,6 +2187,52 @@ K_ITEM *find_accountbalance(int64_t userid)
 	return item;
 }
 
+void dsp_idcontrol(K_ITEM *item, FILE *stream)
+{
+	char createdate_buf[DATE_BUFSIZ], modifydate_buf[DATE_BUFSIZ];
+	IDCONTROL *i;
+
+	if (!item)
+		fprintf(stream, "%s() called with (null) item\n", __func__);
+	else {
+		DATA_IDCONTROL(i, item);
+		tv_to_buf(&(i->createdate), createdate_buf, sizeof(createdate_buf));
+		tv_to_buf(&(i->modifydate), modifydate_buf, sizeof(modifydate_buf));
+		fprintf(stream, " idname='%s' lastid=%"PRId64" cdate='%s'"
+				" cby='%s' ccode='%s' cinet='%s' mdate='%s'"
+				" mby='%s' mcode='%s' minet='%s'\n",
+				i->idname, i->lastid, createdate_buf,
+				i->in_createby, i->in_createcode,
+				i->in_createinet, modifydate_buf,
+				i->in_modifyby, i->in_modifycode,
+				i->in_modifyinet);
+	}
+}
+
+// order by idname asc
+cmp_t cmp_idcontrol(K_ITEM *a, K_ITEM *b)
+{
+	IDCONTROL *ida, *idb;
+	DATA_IDCONTROL(ida, a);
+	DATA_IDCONTROL(idb, b);
+	return CMP_STR(ida->idname, idb->idname);
+}
+
+// idcontrol must be R or W locked
+K_ITEM *find_idcontrol(char *idname)
+{
+	IDCONTROL idcontrol;
+	K_TREE_CTX ctx[1];
+	K_ITEM look, *item;
+
+	STRNCPY(idcontrol.idname, idname);
+
+	INIT_IDCONTROL(&look);
+	look.data = (void *)(&idcontrol);
+	item = find_in_ktree(idcontrol_root, &look, ctx);
+	return item;
+}
+
 // order by optionname asc,activationdate asc,activationheight asc,expirydate desc
 cmp_t cmp_optioncontrol(K_ITEM *a, K_ITEM *b)
 {
@@ -2662,7 +2754,7 @@ static void discard_shares(int64_t *shares_tot, int64_t *shares_dumped,
 #endif
 
 // Duplicates during a reload are set to not show messages
-bool workinfo_age(int64_t workinfoid, char *poolinstance, tv_t *cd,
+bool workinfo_age(int64_t workinfoid, INTRANSIENT *in_poolinstance, tv_t *cd,
 		  tv_t *ss_first, tv_t *ss_last, int64_t *ss_count,
 		  int64_t *s_count, int64_t *s_diff)
 {
@@ -2689,18 +2781,18 @@ bool workinfo_age(int64_t workinfoid, char *poolinstance, tv_t *cd,
 	if (!wi_item) {
 		tv_to_buf(cd, cd_buf, sizeof(cd_buf));
 		LOGERR("%s() %"PRId64"/%s/%ld,%ld %.19s no workinfo! Age discarded!",
-			__func__, workinfoid, poolinstance,
+			__func__, workinfoid, in_poolinstance->str,
 			cd->tv_sec, cd->tv_usec, cd_buf);
 		goto bye;
 	}
 
 	DATA_WORKINFO(workinfo, wi_item);
-	if (strcmp(poolinstance, workinfo->in_poolinstance) != 0) {
+	if (!INTREQ(in_poolinstance->str, workinfo->in_poolinstance)) {
 		tv_to_buf(cd, cd_buf, sizeof(cd_buf));
 		LOGERR("%s() %"PRId64"/%s/%ld,%ld %.19s Poolinstance changed "
 //			"(from %s)! Age discarded!",
 			"(from %s)! Age not discarded",
-			__func__, workinfoid, poolinstance,
+			__func__, workinfoid, in_poolinstance->str,
 			cd->tv_sec, cd->tv_usec, cd_buf,
 			workinfo->in_poolinstance);
 // TODO: ckdb only supports one, so until multiple support is written:
@@ -2715,7 +2807,7 @@ bool workinfo_age(int64_t workinfoid, char *poolinstance, tv_t *cd,
 		tv_to_buf(cd, cd_buf, sizeof(cd_buf));
 		LOGERR("%s() %"PRId64"/%s/%ld,%ld %.19s attempt to age a "
 			"workmarker! Age ignored!",
-			__func__, workinfoid, poolinstance,
+			__func__, workinfoid, in_poolinstance->str,
 			cd->tv_sec, cd->tv_usec, cd_buf);
 		goto bye;
 	}
@@ -2808,8 +2900,8 @@ bool workinfo_age(int64_t workinfoid, char *poolinstance, tv_t *cd,
 				"/%s sstotal=%"PRId64" already=%"PRId64
 				" failed=%"PRId64", sharestotal=%"PRId64
 				" dumped=%"PRId64", diff=%"PRId64,
-				__func__, workinfoid, poolinstance, ss_tot,
-				ss_already, ss_failed, shares_tot,
+				__func__, workinfoid, in_poolinstance->str,
+				ss_tot, ss_already, ss_failed, shares_tot,
 				shares_dumped, diff_tot);
 		}
 	}
@@ -2888,7 +2980,7 @@ skip_ss:
 	if (ks_already) {
 		LOGNOTICE("%s(): Keysummary aging of %"PRId64"/%s "
 			  "kstotal=%"PRId64" already=%"PRId64" failed=%"PRId64,
-			  __func__, workinfoid, poolinstance,
+			  __func__, workinfoid, in_poolinstance->str,
 			  ks_tot, ks_already, ks_failed);
 	}
 
@@ -3119,7 +3211,8 @@ K_ITEM *find_last_sharesummary(int64_t userid, char *workername)
 }
 
 // key_update must age keysharesummary directly
-static void key_auto_age_older(int64_t workinfoid, char *poolinstance, tv_t *cd)
+static void key_auto_age_older(int64_t workinfoid, INTRANSIENT *in_poolinstance,
+				tv_t *cd)
 {
 	static int64_t last_attempted_id = -1;
 	static int64_t prev_found = 0;
@@ -3194,7 +3287,7 @@ static void key_auto_age_older(int64_t workinfoid, char *poolinstance, tv_t *cd)
 		do_id = age_id;
 		to_id = 0;
 		do {
-			ok = workinfo_age(do_id, poolinstance, cd, &kss_first,
+			ok = workinfo_age(do_id, in_poolinstance, cd, &kss_first,
 					  &kss_last, &kss_count, &s_count,
 					  &s_diff);
 
@@ -3275,7 +3368,7 @@ static void key_auto_age_older(int64_t workinfoid, char *poolinstance, tv_t *cd)
 
 /* TODO: markersummary checking?
  * However, there should be no issues since the sharesummaries are removed */
-void auto_age_older(int64_t workinfoid, char *poolinstance, tv_t *cd)
+void auto_age_older(int64_t workinfoid, INTRANSIENT *in_poolinstance, tv_t *cd)
 {
 	static int64_t last_attempted_id = -1;
 	static int64_t prev_found = 0;
@@ -3294,7 +3387,7 @@ void auto_age_older(int64_t workinfoid, char *poolinstance, tv_t *cd)
 	bool ok, found;
 
 	if (key_update) {
-		key_auto_age_older(workinfoid, poolinstance, cd);
+		key_auto_age_older(workinfoid, in_poolinstance, cd);
 		return;
 	}
 
@@ -3359,7 +3452,7 @@ void auto_age_older(int64_t workinfoid, char *poolinstance, tv_t *cd)
 		do_id = age_id;
 		to_id = 0;
 		do {
-			ok = workinfo_age(do_id, poolinstance, cd, &ss_first,
+			ok = workinfo_age(do_id, in_poolinstance, cd, &ss_first,
 					  &ss_last, &ss_count, &s_count,
 					  &s_diff);
 
@@ -4880,7 +4973,8 @@ bool process_pplns(int32_t height, char *blockhash, tv_t *addr_cd)
 		 FLDSEP, cd_buf);
 	DUP_POINTER(payouts_free, payouts->stats, &buf[0]);
 
-	conned = CKPQConn(&conn);
+	if (CKPQConn(&conn))
+		conned = true;
 	begun = CKPQBegin(conn);
 	if (!begun)
 		goto shazbot;
@@ -4983,6 +5077,9 @@ bool process_pplns(int32_t height, char *blockhash, tv_t *addr_cd)
 						    (double)(pa->payratio) /
 						    (double)paytotal;
 				used += d64;
+				payments->in_originaltxn =
+					payments->in_committxn =
+					payments->in_commitblockhash = EMPTY;
 				k_add_tail_nolock(pay_store, pay_item);
 				ok = payments_add(conn, true, pay_item,
 						  &(payments->old_item),
@@ -5012,6 +5109,9 @@ bool process_pplns(int32_t height, char *blockhash, tv_t *addr_cd)
 				payments->amount = amount;
 				payments->diffacc = miningpayouts->diffacc;
 				used = amount;
+				payments->in_originaltxn =
+					payments->in_committxn =
+					payments->in_commitblockhash = EMPTY;
 				k_add_tail_nolock(pay_store, pay_item);
 				ok = payments_add(conn, true, pay_item,
 						  &(payments->old_item),
@@ -6175,7 +6275,7 @@ cmp_t cmp_poolstats(K_ITEM *a, K_ITEM *b)
 	POOLSTATS *pa, *pb;
 	DATA_POOLSTATS(pa, a);
 	DATA_POOLSTATS(pb, b);
-	cmp_t c = CMP_STR(pa->poolinstance, pb->poolinstance);
+	cmp_t c = CMP_STR(pa->in_poolinstance, pb->in_poolinstance);
 	if (c == 0)
 		c = CMP_TV(pa->createdate, pb->createdate);
 	return c;
@@ -6194,7 +6294,7 @@ void dsp_userstats(K_ITEM *item, FILE *stream)
 		tv_to_buf(&(u->createdate), createdate_buf, sizeof(createdate_buf));
 		fprintf(stream, " pi='%s' uid=%"PRId64" w='%s' e=%"PRId64" Hs=%f "
 				"Hs5m=%f Hs1hr=%f Hs24hr=%f sl=%s sc=%d sd=%s cd=%s\n",
-				u->poolinstance, u->userid, u->in_workername,
+				u->in_poolinstance, u->userid, u->in_workername,
 				u->elapsed, u->hashrate, u->hashrate5m,
 				u->hashrate1hr, u->hashrate24hr, u->summarylevel,
 				u->summarycount, statsdate_buf, createdate_buf);
@@ -6344,7 +6444,7 @@ K_ITEM *_find_markersummary(int64_t markerid, int64_t workinfoid,
 bool make_markersummaries(bool msg, char *by, char *code, char *inet,
 			  tv_t *cd, K_TREE *trf_root)
 {
-	PGconn *conn;
+	PGconn *conn = NULL;
 	K_TREE_CTX ctx[1];
 	WORKMARKERS *workmarkers;
 	K_ITEM *wm_item, *wm_last = NULL, *s_item = NULL;
@@ -6374,7 +6474,7 @@ bool make_markersummaries(bool msg, char *by, char *code, char *inet,
 		return false;
 	}
 
-	conn = dbconnect();
+	CKPQConn(&conn);
 
 	/* Store all shares in the DB before processing the workmarker
 	 * This way we know that the high shares in the DB will match the start
@@ -6403,7 +6503,7 @@ bool make_markersummaries(bool msg, char *by, char *code, char *inet,
 
 	LOGDEBUG("%s() processing workmarkers %"PRId64"/%s/End %"PRId64"/"
 		 "Stt %"PRId64"/%s/%s",
-		 __func__, workmarkers->markerid, workmarkers->poolinstance,
+		 __func__, workmarkers->markerid, workmarkers->in_poolinstance,
 		 workmarkers->workinfoidend, workmarkers->workinfoidstart,
 		 workmarkers->description, workmarkers->status);
 
@@ -6433,7 +6533,7 @@ bool make_markersummaries(bool msg, char *by, char *code, char *inet,
 		   tvdiff(&proc_lock_fin, &proc_lock_got));
 
 flailed:
-	PQfinish(conn);
+	CKPQDisco(&conn, true);
 
 	if (count > 0) {
 		LOGWARNING("%s() Stored: %d high shares %.3fs",
@@ -6516,7 +6616,7 @@ void dsp_workmarkers(K_ITEM *item, FILE *stream)
 		DATA_WORKMARKERS(wm, item);
 		fprintf(stream, " id=%"PRId64" pi='%s' end=%"PRId64" stt=%"
 				PRId64" sta='%s' des='%s'\n",
-				wm->markerid, wm->poolinstance,
+				wm->markerid, wm->in_poolinstance,
 				wm->workinfoidend, wm->workinfoidstart,
 				wm->status, wm->description);
 	}
