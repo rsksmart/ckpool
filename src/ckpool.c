@@ -1664,16 +1664,11 @@ static void dump_config_file_to_log(char* configFileLocation)
 		fileSize = ftell(file);
 		rewind(file);
 
-		configFile = ckalloc(sizeof(char) * fileSize);
+		configFile = ckalloc(sizeof(char) * (fileSize + 1));
 
 		if (file) {
-			int currentChar;
-			int position = 0;
-			while ((currentChar = getc(file)) != EOF) {
-				configFile[position] = (char) currentChar;
-				position++;
-			}
-			configFile[position] = '\0';
+			fread(configFile, fileSize + 1, 1, file);
+			configFile[fileSize] = '\0';
 			fclose(file);
 		}
 
