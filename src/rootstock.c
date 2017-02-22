@@ -9,6 +9,7 @@
 #include <jansson.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "ckpool.h"
 #include "libckpool.h"
@@ -462,7 +463,7 @@ static void setup_servers(ckpool_t *ckp)
 	pthread_t pth_rskupdate;
 	int i;
 
-	if (ckp->rskds > SIZE_MAX/sizeof(server_instance_t *)) {
+	if (ckp->rskds > INT_MAX/sizeof(server_instance_t *)) {
 		LOGWARNING("Too many rskd servers to connect. First two will be used instead.");
 		ckp->rskds = 2;
 	}
