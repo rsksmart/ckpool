@@ -1667,7 +1667,7 @@ static void dump_config_file_to_log(char* configFileLocation)
 		configFile = ckalloc(sizeof(char) * (fileSize + 1));
 
 		if (file) {
-			fread(configFile, fileSize + 1, 1, file);
+			fread(configFile, fileSize, 1, file);
 			configFile[fileSize] = '\0';
 			fclose(file);
 		}
