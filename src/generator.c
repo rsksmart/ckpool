@@ -340,7 +340,7 @@ bool generator_submitblock(ckpool_t *ckp, char *buf)
 	ret = submit_block(cs, buf + data_position);
 	tv_time(&finish_tv);
 
-	memset(buf + submitblock_tag_size + blockhash_size, 0, 1);
+	buf[submitblock_tag_size + blockhash_size] = '\0';
 	ASPRINTF(&blockmsg, "%sblock:%s", ret ? "" : "no", buf + submitblock_tag_size);
 	{
 		struct tm start_tm;
@@ -355,6 +355,7 @@ bool generator_submitblock(ckpool_t *ckp, char *buf)
 			finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
 			finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
 			blockmsg);
+		free(blockmsg);
 	}
 
 	return ret;
@@ -462,17 +463,22 @@ retry:
 			}
 		}
 	} else if (cmdmatch(buf, "submitblock:")) {
-		char blockmsg[80];
+		char* blockmsg;
 		bool ret;
 		tv_t start_tv;
 		tv_t finish_tv;
+		const size_t submitblock_tag_size = 12;
+		const size_t blockhash_size = 64;
+		const size_t data_position = submitblock_tag_size + blockhash_size + 1;
 
 		LOGNOTICE("Submitting block data!");
 		tv_time(&start_tv);
-		ret = submit_block(cs, buf + 12 + 64 + 1);
+		ret = submit_block(cs, buf + data_position);
 		tv_time(&finish_tv);
-		memset(buf + 12 + 64, 0, 1);
-		sprintf(blockmsg, "%sblock:%s", ret ? "" : "no", buf + 12);
+
+		buf[submitblock_tag_size + blockhash_size] = '\0';
+		ASPRINTF(&blockmsg, "%sblock:%s", ret ? "" : "no", buf + submitblock_tag_size);
+
 		send_proc(ckp->stratifier, blockmsg);
 
 		{
@@ -488,6 +494,7 @@ retry:
 				finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
 				finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
 				blockmsg);
+			free(blockmsg);
 		}
 	} else if (cmdmatch(buf, "checkaddr:")) {
 		if (validate_address(cs, buf + 10))
