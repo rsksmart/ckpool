@@ -10,11 +10,23 @@
 
 #include "config.h"
 
+#include <getopt.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
+#include <termios.h>
 #include <unistd.h>
 
 #include "libckpool.h"
+#include "utlist.h"
+
+struct input_log {
+	struct input_log *next;
+	struct input_log *prev;
+	char *buf;
+};
+
+struct input_log *input_log;
 
 static int msg_loglevel = LOG_DEBUG;
 
@@ -70,22 +82,139 @@ void mkstamp(char *stamp, size_t siz)
 			tzinfo);
 }
 
+static struct option long_options[] = {
+	{"counter",	no_argument,		0,	'c'},
+	{"help",	no_argument,		0,	'h'},
+	{"loglevel",	required_argument,	0,	'l'},
+	{"name",	required_argument,	0,	'n'},
+	{"sockname",	required_argument,	0,	'N'},
+	{"proxy",	no_argument,		0,	'p'},
+	{"sockdir",	required_argument,	0,	's'},
+	{"timeout1",	required_argument,	0,	't'},
+	{"timeout2",	required_argument,	0,	'T'},
+	{0, 0, 0, 0}
+};
+
+struct termios oldctrl;
+
+static void sighandler(const int sig)
+{
+	/* Return console to its previous state */
+	tcsetattr(STDIN_FILENO, TCSANOW, &oldctrl);
+
+	if (sig) {
+		signal (sig, SIG_DFL);
+		raise (sig);
+	}
+}
+
+int get_line(char **buf)
+{
+	struct input_log *entry = NULL;
+	int c, len = 0, ctl1, ctl2;
+	struct termios ctrl;
+	*buf = NULL;
+
+	/* If we're not reading from a terminal, parse lines at a time allowing
+	 * us to script usage of ckpmsg */
+	if (!isatty(fileno((FILE *)stdin))) do {
+		size_t n;
+
+		dealloc(*buf);
+		len = getline(buf, &n, stdin);
+		if (len == -1) {
+			dealloc(*buf);
+			goto out;
+		}
+		len = strlen(*buf);
+		(*buf)[--len] = '\0'; // Strip \n
+		goto out;
+	} while (42);
+
+	tcgetattr(STDIN_FILENO, &ctrl);
+	ctrl.c_lflag &= ~(ICANON | ECHO); // turn off canonical mode and echo
+	tcsetattr(STDIN_FILENO, TCSANOW, &ctrl);
+
+	do {
+		c = getchar();
+		if (c == EOF || c == '\n')
+			break;
+		if (c == 27) {
+			ctl1 = getchar();
+			ctl2 = getchar();
+			if (ctl1 != '[')
+				continue;
+			if (ctl2 < 'A' || ctl2 > 'B')
+				continue;
+			if (!input_log)
+				continue;
+			printf("\33[2K\r");
+			free(*buf);
+			if (ctl2 == 'B')
+				entry = entry ? entry->prev : input_log->prev;
+			else
+				entry = entry ? entry->next : input_log;
+			*buf = strdup(entry->buf);
+			len = strlen(*buf);
+			printf("%s", *buf);
+		}
+		if (c == 127) {
+			if (!len)
+				continue;
+			printf("\b \b");
+			(*buf)[--len] = '\0';
+			continue;
+		}
+		if (c < 32 || c > 126)
+			continue;
+		len++;
+		realloc_strcat(buf, (char *)&c);
+		putchar(c);
+	} while (42);
+
+	if (*buf)
+		len = strlen(*buf);
+	printf("\n");
+out:
+	return len;
+}
+
 int main(int argc, char **argv)
 {
 	char *name = NULL, *socket_dir = NULL, *buf = NULL, *sockname = "listener";
+	bool proxy = false, counter = false;
 	int tmo1 = RECV_UNIX_TIMEOUT1;
 	int tmo2 = RECV_UNIX_TIMEOUT2;
-	bool proxy = false, counter = false;
+	struct sigaction handler;
+	int c, count, i = 0, j;
 	char stamp[128];
-	int c, count;
 
-	while ((c = getopt(argc, argv, "cl:N:n:ps:t:T:")) != -1) {
+	tcgetattr(STDIN_FILENO, &oldctrl);
+
+	while ((c = getopt_long(argc, argv, "chl:N:n:ps:t:T:", long_options, &i)) != -1) {
 		switch(c) {
 			/* You'd normally disable most logmsg with -l 3 to
 			 * only see the counter */
 			case 'c':
 				counter = true;
 				break;
+			case 'h':
+				for (j = 0; long_options[j].val; j++) {
+					struct option *jopt = &long_options[j];
+
+					if (jopt->has_arg) {
+						char *upper = alloca(strlen(jopt->name) + 1);
+						int offset = 0;
+
+						do {
+							upper[offset] = toupper(jopt->name[offset]);
+						} while (upper[offset++] != '\0');
+						printf("-%c %s | --%s %s\n", jopt->val,
+						       upper, jopt->name, upper);
+					} else
+						printf("-%c | --%s\n", jopt->val, jopt->name);
+				}
+				exit(0);
 			case 'l':
 				msg_loglevel = atoi(optarg);
 				if (msg_loglevel < LOG_EMERG ||
@@ -133,29 +262,38 @@ int main(int argc, char **argv)
 	trail_slash(&socket_dir);
 	realloc_strcat(&socket_dir, sockname);
 
+	signal(SIGPIPE, SIG_IGN);
+	handler.sa_handler = &sighandler;
+	handler.sa_flags = 0;
+	sigemptyset(&handler.sa_mask);
+	sigaction(SIGTERM, &handler, NULL);
+	sigaction(SIGINT, &handler, NULL);
+	sigaction(SIGQUIT, &handler, NULL);
+	sigaction(SIGKILL, &handler, NULL);
+	sigaction(SIGHUP, &handler, NULL);
+
 	count = 0;
 	while (42) {
+		struct input_log *log_entry;
 		int sockd, len;
-		size_t n;
+		char *buf2;
 
-		dealloc(buf);
-		len = getline(&buf, &n, stdin);
-		if (len == -1) {
-			LOGNOTICE("Failed to get a valid line");
+		len = get_line(&buf);
+		if (len == -1)
 			break;
-		}
 		mkstamp(stamp, sizeof(stamp));
-		len = strlen(buf);
-		if (len < 2) {
+		if (len < 1) {
 			LOGERR("%s No message", stamp);
 			continue;
 		}
-		buf[len - 1] = '\0'; // Strip /n
 		if (buf[0] == '#') {
 			LOGDEBUG("%s Got comment: %s", stamp, buf);
 			continue;
 		}
 		LOGDEBUG("%s Got message: %s", stamp, buf);
+		log_entry = ckalloc(sizeof(struct input_log));
+		log_entry->buf = buf;
+		CDL_PREPEND(input_log, log_entry);
 
 		sockd = open_unix_client(socket_dir);
 		if (sockd < 0) {
@@ -166,15 +304,15 @@ int main(int argc, char **argv)
 			LOGERR("Failed to send unix msg: %s", buf);
 			break;
 		}
-		dealloc(buf);
-		buf = recv_unix_msg_tmo2(sockd, tmo1, tmo2);
+		buf2 = recv_unix_msg_tmo2(sockd, tmo1, tmo2);
 		close(sockd);
-		if (!buf) {
+		if (!buf2) {
 			LOGERR("Received empty reply");
 			continue;
 		}
 		mkstamp(stamp, sizeof(stamp));
-		LOGMSGSIZ(65536, LOG_NOTICE, "%s Received response: %s", stamp, buf);
+		LOGMSGSIZ(65536, LOG_NOTICE, "%s Received response: %s", stamp, buf2);
+		dealloc(buf2);
 
 		if (counter) {
 			if ((++count % 100) == 0) {
@@ -184,7 +322,8 @@ int main(int argc, char **argv)
 		}
 	}
 
-	dealloc(buf);
 	dealloc(socket_dir);
+	sighandler(0);
+
 	return 0;
 }

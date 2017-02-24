@@ -9,6 +9,7 @@
 #include <jansson.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "ckpool.h"
 #include "libckpool.h"
@@ -20,42 +21,9 @@
 
 #include "rsktestconfig.h"
 
-#define CHAR_ARRAY_64_COPY_SIZE 65
-
-static unsigned int b64val(char c) {
-	if (c >= 'A' && c <= 'Z') {
-		return c - 'A';
-	} else if (c >= 'a' && c <= 'z') {
-		return c - 'a' + 26;
-	} else if (c >= '0' && c <= '9') {
-		return c - '0' + 52;
-	} else if (c == '+') {
-		return 62;
-	} else if (c == '/') {
-		return 63;
-	}
-	return 0;
-}
-
-size_t b642bin(char* dest, const char* src, size_t size)
-{
-	size_t res = 0;
-	size_t len = strlen(src);
-	while (len >= 4) {
-		unsigned int src0 = b64val(src[0]);
-		unsigned int src1 = b64val(src[1]);
-		unsigned int src2 = b64val(src[2]);
-		unsigned int src3 = b64val(src[3]);
-		dest[0] = (src0 << 2) | (src1 >> 4) & 0x03;
-		dest[1] = ((src1 & 0x0F) << 4) | ((src2 >> 2) & 0x0F);
-		dest[2] = ((src2 & 0x03) << 6) | src3;
-		src += 4;
-		dest += 3;
-		len -= 4;
-		res += 3;
-	}
-	return res;
-}
+#define BIN_HASH_SIZE sizeof(((rsk_getwork_t*)0)->blockhashmergebin)
+#define HEX_HASH_SIZE sizeof(((rsk_getwork_t*)0)->blockhashmerge)
+#define HEX_TARGET_SIZE sizeof(((rsk_getwork_t*)0)->target)
 
 static const char *rsk_getwork_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_getWork\", \"params\": [], \"id\": %d}\n";
 
@@ -66,7 +34,6 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	json_t *res_val, *val;
 	bool ret = false;
 	char *rpc_req;
-	size_t len = 67 + 16; // strlen(rsk_getwork_req) + len(id)
 	const char* blockhashmerge;
 	char blockhashmergebin[36];
 	const char* target;
@@ -77,8 +44,7 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 	int id;
 
 	id = ++rdata->lastreqid;
-	rpc_req = ckalloc(len);
-	sprintf(rpc_req, rsk_getwork_req, id);
+	ASPRINTF(&rpc_req, rsk_getwork_req, id);
 
 	val = json_rpc_call_timeout(cs, rpc_req, 3);
 	dealloc(rpc_req);
@@ -108,13 +74,14 @@ bool rsk_getwork(connsock_t *cs, rsk_getwork_t *rgw)
 
 	parentblockhash = json_string_value(json_object_get(res_val, "parentBlockHash"));
 
-	strncpy(rgw->blockhashmerge, blockhashmerge+2, CHAR_ARRAY_64_COPY_SIZE);
-	hex2bin(blockhashmergebin, blockhashmerge+2, 32);
-	memcpy(rgw->blockhashmergebin, blockhashmergebin, 32);
+	// + 2 is to skip the initial 0X value of the hex representation of the hash
+	strncpy(rgw->blockhashmerge, blockhashmerge + 2, HEX_HASH_SIZE);
+	hex2bin(blockhashmergebin, blockhashmerge + 2, BIN_HASH_SIZE);
+	memcpy(rgw->blockhashmergebin, blockhashmergebin, BIN_HASH_SIZE);
 
-	strncpy(rgw->target, target+2, CHAR_ARRAY_64_COPY_SIZE);
+	strncpy(rgw->target, target + 2, HEX_TARGET_SIZE);
 
-	strncpy(rgw->parentblockhash, parentblockhash+2, CHAR_ARRAY_64_COPY_SIZE);
+	strncpy(rgw->parentblockhash, parentblockhash+2, HEX_HASH_SIZE);
 
 	rgw->minerfees = minerfees;
 	rgw->notify = notify;
@@ -132,17 +99,15 @@ static bool rsk_submitBitcoinBlock(connsock_t *cs, char *params)
 	ckpool_t *ckp = cs->ckp;
 	rdata_t *rdata = ckp->rdata;
 	json_t *val, *res_val;
-	int len, retries = 0;
+	int retries = 0;
 	const char *res_ret;
 	bool ret = false;
 	char *rpc_req;
 	int id;
 
-	len = 76 + strlen(params) + 16; // len(rsk_submitBitcoinBlock_req) + len(params) + len(id)
 retry:
 	id = ++rdata->lastreqid;
-	rpc_req = ckalloc(len);
-	sprintf(rpc_req, rsk_submitBitcoinBlock_req, params, id);
+	ASPRINTF(&rpc_req, rsk_submitBitcoinBlock_req, params, id);
 	val = json_rpc_call_timeout(cs, rpc_req, 3);
 	dealloc(rpc_req);
 	if (!val) {
@@ -202,16 +167,16 @@ static void *rootstock_update(void *arg)
 
 	while (42) {
 		dealloc(buf);
+
 		buf = send_recv_proc(ckp->rootstock, "getwork");
-	    if (buf && !cmdmatch(buf, "failed")) {
-	    	if (trigger_rsk_update(ckp, rdata, buf)) {
-	    		//LOGWARNING("Rootstock: update %s", buf);
-	    		send_proc(ckp->stratifier, "rskupdate");
-	    	}
-	    }
+		if (buf && !cmdmatch(buf, "failed")) {
+			if (trigger_rsk_update(ckp, rdata, buf)) {
+				//LOGWARNING("Rootstock: update %s", buf);
+				send_proc(ckp->stratifier, "rskupdate");
+			}
+		}
 		cksleep_ms(ckp->rskpollperiod);
 	}
-	return NULL;
 }
 
 /* Use a temporary fd when testing server_alive to avoid races on cs->fd */
@@ -235,11 +200,12 @@ static bool server_alive(ckpool_t *ckp, server_instance_t *si, bool pinging)
 	realloc_strcat(&userpass, ":");
 	realloc_strcat(&userpass, si->pass);
 	cs->auth = http_base64(userpass);
-	dealloc(userpass);
 	if (!cs->auth) {
 		LOGWARNING("Failed to create base64 auth from %s", userpass);
+		dealloc(userpass);
 		return ret;
 	}
+	dealloc(userpass);
 
 	fd = connect_socket(cs->url, cs->port);
 	if (fd < 0) {
@@ -250,6 +216,11 @@ static bool server_alive(ckpool_t *ckp, server_instance_t *si, bool pinging)
 
 	/* Test we can connect, authorise and get a block template */
 	rgw = ckzalloc(sizeof(rsk_getwork_t));
+	if (!rgw) {
+		LOGWARNING("Couldn't allocate an rsk_getwork_t instance");
+		goto out;
+	}
+
 	si->data = rgw;
 	if (!rsk_getwork(cs, rgw)) {
 		if (!pinging) {
@@ -257,12 +228,12 @@ static bool server_alive(ckpool_t *ckp, server_instance_t *si, bool pinging)
 				cs->url, cs->port);
 		}
 		goto out;
-	} 
+	}
 	si->alive = ret = true;
 	LOGNOTICE("Server alive: %s:%s", cs->url, cs->port);
 out:
 	/* Close the file handle */
-	close(fd);
+	Close(fd);
 	return ret;
 }
 
@@ -299,9 +270,8 @@ retry:
 	}
 	LOGWARNING("WARNING: No rskds active!");
 	sleep(5);
-	attempts--;
-	//cksleep_ms(20);
-	if (attempts>=0) {
+
+	if (attempts--) {
 		LOGWARNING("No rskds active, retry %d more times", attempts);
 		goto retry;
 	} else {
@@ -320,7 +290,7 @@ static void kill_server(server_instance_t *si)
 {
 	connsock_t *cs;
 
-	if (!si) // This shouldn't happen
+	if (unlikely(!si)) // This shouldn't happen
 		return;
 
 	LOGNOTICE("Killing server");
@@ -373,7 +343,6 @@ reconnect:
 		mutex_unlock(&pi->rmsg_lock);
 		LOGWARNING("Finished emptying rskd queue");
 		goto reconnect;
-		//goto out;
 	}
 	if (unlikely(!started)) {
 		started = true;
@@ -403,8 +372,7 @@ retry:
 	buf = umsg->buf;
 	if (cmdmatch(buf, "getwork")) {
 		if (!rsk_getwork(cs, rgw)) {
-			LOGWARNING("Failed to get work from %s:%s",
-				   cs->url, cs->port);
+			LOGWARNING("Failed to get work from %s:%s", cs->url, cs->port);
 			si->alive = false;
 			send_unix_msg(umsg->sockd, "failed");
 			goto reconnect;
@@ -421,10 +389,16 @@ retry:
 		bool ret;
 		tv_t start_tv;
 		tv_t finish_tv;
+		const size_t submitblock_tag_size = 12;
+		const size_t blockhash_size = 64;
+		const size_t data_position = submitblock_tag_size + blockhash_size + 1;
+
 		LOGINFO("Submitting rootstock block data!");
+
 		tv_time(&start_tv);
-		ret = rsk_submitBitcoinBlock(cs, buf + 12 + 64 + 1);
+		ret = rsk_submitBitcoinBlock(cs, buf + data_position);
 		tv_time(&finish_tv);
+
 		{
 			struct tm start_tm;
 			int start_ms = (int)(start_tv.tv_usec / 1000);
@@ -432,7 +406,7 @@ retry:
 			int finish_ms = (int)(finish_tv.tv_usec / 1000);
 			localtime_r(&(start_tv.tv_sec), &start_tm);
 			localtime_r(&(finish_tv.tv_sec), &finish_tm);
-			memset(buf + 12 + 64, 0, 1);
+			memset(buf + submitblock_tag_size + blockhash_size, 0, 1);
 			LOGINFO("ROOTSTOCK: submitBitcoinBlock: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
 				start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
 				start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
@@ -489,6 +463,11 @@ static void setup_servers(ckpool_t *ckp)
 	pthread_t pth_rskupdate;
 	int i;
 
+	if (ckp->rskds > INT_MAX/sizeof(server_instance_t *)) {
+		LOGWARNING("Too many rskd servers to connect. First two will be used instead.");
+		ckp->rskds = 2;
+	}
+
 	ckp->rskdservers = ckalloc(sizeof(server_instance_t *) * ckp->rskds);
 	for (i = 0; i < ckp->rskds; i++) {
 		server_instance_t *si;
@@ -541,5 +520,4 @@ void *rootstock(void *arg)
 
 	server_mode(ckp, pi);
 	dealloc(ckp->rdata);
-	return NULL;
 }

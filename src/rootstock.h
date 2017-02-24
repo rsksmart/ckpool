@@ -18,27 +18,27 @@ struct rootstock_data {
 
 	/* Last getwork parameters */
 	char blockhashmergebin[32];
-	char target[68];
+	char target[65];
 	double minerfees;
 	int notify;
-	char blockhashmerge[68];
-	char parentblockhash[68];
+	char blockhashmerge[65];
+	char parentblockhash[65];
 
 	/* Last hash being worked on */
-	char lastblockhashmerge[68];
-	char lastparentblockhash[68];
+	char lastblockhashmerge[65];
+	char lastparentblockhash[65];
 };
 
 typedef struct rootstock_data rdata_t;
 
 struct rsk_getwork {
 	char blockhashmergebin[32];
-	char target[68];
+	char target[65];
 	double minerfees;
 	int notify;
 
-	char blockhashmerge[68];
-	char parentblockhash[68];
+	char blockhashmerge[65];
+	char parentblockhash[65];
 };
 
 typedef struct rsk_getwork rsk_getwork_t;
