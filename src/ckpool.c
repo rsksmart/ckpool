@@ -1657,6 +1657,7 @@ static void dump_config_file_to_log(char* configFileLocation)
 		char* configFile;
 		FILE *file;
 		long fileSize;
+		int ret;
 
 		file = fopen(configFileLocation, "r");
 
@@ -1667,9 +1668,14 @@ static void dump_config_file_to_log(char* configFileLocation)
 		configFile = ckalloc(sizeof(char) * (fileSize + 1));
 
 		if (file) {
-			fread(configFile, fileSize, 1, file);
+			ret = fread(configFile, fileSize, 1, file);
 			configFile[fileSize] = '\0';
 			fclose(file);
+		}
+
+		if (ret < 1) {
+			LOGINFO("Failed to read config file");
+			return;
 		}
 
 		LOGINFO_RSK("ROOTSTOCK: config_log_start \n%s", configFile);
