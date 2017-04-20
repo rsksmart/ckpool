@@ -112,8 +112,10 @@ retry:
 	dealloc(rpc_req);
 	if (!val) {
 		LOGWARNING("%s:%s Failed to get valid json response to mnr_submitBitcoinBlock", cs->url, cs->port);
-		if (++retries < 1)
+		if (++retries < 1) {
+			Close(cs->fd);
 			goto retry;
+		}
 		return ret;
 	}
 	res_val = json_object_get(val, "result");
