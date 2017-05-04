@@ -2229,8 +2229,9 @@ static void rsk_block_submit(ckpool_t *ckp, char *gbt_block, bool submit_bitcoin
 	if (ckp->rskds && ++rsk_submit_count < max_submits_per_window) {
 		int objects;
 		unix_msg_t *umsg;
-        const int max_umsg_queue_size = 10;
+        const int max_umsg_queue_size = 30;
         DL_COUNT(ckp->rootstock.unix_msgs, umsg, objects);
+       	LOGINFO("ROOTSTOCK: unix msg queue size %d", objects);
 		if(objects < max_umsg_queue_size) {
             send_proc(ckp->rootstock, gbt_block);
         }
