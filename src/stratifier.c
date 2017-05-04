@@ -2211,13 +2211,13 @@ process_block(const workbase_t *wb, const char *coinbase, const int cblen,
 }
 
 /* Submit block data to RSK node, free gbt_block if solution is not valid for BTC.
- * Avoid flooding by allowing only 3 submits per second. */
+ * Avoid flooding by allowing only 1 submit per second. */
 static void rsk_block_submit(ckpool_t *ckp, char *gbt_block, bool submit_bitcoind)
 {
 	char *gbt_block_for_rsk;
 	static volatile time_t rsk_submit;
 	static volatile int rsk_submit_count;
-	const int max_submits_per_window = 4;
+	const int max_submits_per_window = 2;
 	const int window_size_seconds = 1;
 	time_t now;
 	time(&now);
