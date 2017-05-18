@@ -2003,7 +2003,6 @@ int main(int argc, char **argv)
 
 	write_namepid(&ckp.main);
 	open_process_sock(&ckp, &ckp.main, &ckp.main.us);
-	launch_logger(&ckp);
 	ckp.logfd = fileno(ckp.logfp);
 
 	dump_config_file_to_log(ckp.config);
