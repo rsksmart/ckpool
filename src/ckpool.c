@@ -1680,14 +1680,14 @@ static void dump_config_file_to_log(char* configFileLocation)
 
 		if (ret < 1) {
 			LOGERR("Failed to read config file");
-			return;
+			goto out;
 		}
 
 		LOGINFO_RSK("ROOTSTOCK: config_log_start \n%s", configFile);
 
-		free(configFile);
-
 		LOGINFO("ROOTSTOCK: config_log_complete");
+out:
+		free(configFile);
 	}
 }
 
