@@ -1661,6 +1661,11 @@ static void dump_config_file_to_log(char* configFileLocation)
 
 		file = fopen(configFileLocation, "r");
 
+		if (!file) {
+			LOGERR("Failed to open file config file");
+			return;
+		}
+
 		fseek(file, 0L, SEEK_END);
 		fileSize = ftell(file);
 		rewind(file);
@@ -1674,7 +1679,7 @@ static void dump_config_file_to_log(char* configFileLocation)
 		}
 
 		if (ret < 1) {
-			LOGINFO("Failed to read config file");
+			LOGERR("Failed to read config file");
 			return;
 		}
 
