@@ -336,13 +336,11 @@ reconnect:
 	si = live_server(ckp);
 	if (!si) {
 		LOGWARNING("Could not connect to rskd, empty queue");
-		mutex_lock(&pi->rmsg_lock);
 		do {
 			LOGWARNING("Empty 1 rsk queue item");
 			clear_unix_msg(&umsg);
-			umsg = get_unix_msg_no_lock_no_wait(pi);
+			umsg = get_unix_msg_no_wait(pi);
 		} while (umsg);
-		mutex_unlock(&pi->rmsg_lock);
 		LOGWARNING("Finished emptying rskd queue");
 		goto reconnect;
 	}
