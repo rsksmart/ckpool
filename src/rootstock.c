@@ -12,7 +12,6 @@
 #include <limits.h>
 
 #include "ckpool.h"
-#include "libckpool.h"
 #include "rootstock.h"
 
 #include "jansson.h"
