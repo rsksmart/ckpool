@@ -307,10 +307,8 @@ static void *unix_receiver(void *arg)
 	return NULL;
 }
 
-/**
- * Created for RSK.
- * Similar to get_unix_msg() but does not wait for a msg to be added.
- */
+ /* Created for RSK.
+  * Similar to get_unix_msg() but does not wait for a msg to be added. */
 unix_msg_t *get_unix_msg_no_wait(proc_instance_t *pi)
 {
 	mutex_lock(&pi->rmsg_lock);
