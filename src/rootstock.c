@@ -118,12 +118,18 @@ retry:
 	}
 	res_val = json_object_get(val, "result");
 	if (!res_val) {
-		LOGWARNING("Failed to get result in json response to mnr_submitBitcoinBlock");
-		if (++retries < 1) {
-			json_decref(val);
-			goto retry;
+		res_val = json_object_get(val, "error");
+		if(!res_val){
+			LOGWARNING("Json response to mnr_submitBitcoinBlock format is unknown and can't be parsed");
+			if (++retries < 1) {
+				json_decref(val);
+				goto retry;
+			}
+			goto out;
 		}
-		goto out;
+		const int error_code = json_integer_value(json_object_get(res_val, "code"));
+		const char *error_message = json_string_value(json_object_get(res_val, "message"));
+		LOGWARNING("Error on mnr_submitBitcoinBlock. Code: %d Message: %s.", error_code, error_message);
 	}
 	if (!json_is_null(res_val)) {
 		res_ret = json_string_value(res_val);
