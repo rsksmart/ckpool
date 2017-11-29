@@ -58,7 +58,10 @@ static bool open_logfile(ckpool_t *ckp)
  * on any delays. */
 static void console_log(ckpool_t __maybe_unused *ckp, char *msg)
 {
-	fprintf(stderr, "\33[2K\r%s", msg);
+	/* Add clear line only if stderr is going to console */
+	if (isatty(fileno(stderr)))
+		fprintf(stderr, "\33[2K\r");
+	fprintf(stderr, "%s", msg);
 	fflush(stderr);
 
 	free(msg);
@@ -379,7 +382,6 @@ static int pid_wait(const pid_t pid, const int ms)
 	} while (ms_tvdiff(&now, &start) < ms);
 	return ret;
 }
-
 static void api_message(ckpool_t *ckp, char **buf, int *sockd)
 {
 	apimsg_t *apimsg = ckalloc(sizeof(apimsg_t));
@@ -629,12 +631,20 @@ static int recv_available(ckpool_t *ckp, connsock_t *cs)
  * and -1 on error. */
 int read_socket_line(connsock_t *cs, float *timeout)
 {
-	ckpool_t *ckp = cs->ckp;
-	bool quiet = ckp->proxy | ckp->remote;
 	char *eom = NULL;
 	tv_t start, now;
+	ckpool_t *ckp;
+	int ret = -1;
+	bool quiet;
 	float diff;
-	int ret;
+
+	if (unlikely(!cs)) {
+		LOGNOTICE("Invalidated connsock sent to read_socket_line");
+		return ret;
+	}
+
+	ckp = cs->ckp;
+	quiet = ckp->proxy | ckp->remote;
 
 	clear_bufline(cs);
 	recv_available(ckp, cs); // Intentionally ignore return value
