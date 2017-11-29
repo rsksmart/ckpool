@@ -108,6 +108,7 @@ retry:
 	ASPRINTF(&rpc_req, rsk_submitBitcoinBlock_req, params, id);
 	val = json_rpc_call_timeout(cs, rpc_req, 3);
 	dealloc(rpc_req);
+	
 	if (!val) {
 		LOGWARNING("%s:%s Failed to get valid json response to mnr_submitBitcoinBlock", cs->url, cs->port);
 		if (++retries < 1) {
@@ -116,6 +117,7 @@ retry:
 		}
 		return ret;
 	}
+
 	res_val = json_object_get(val, "result");
 	if (!res_val) {
 		res_val = json_object_get(val, "error");
@@ -131,20 +133,21 @@ retry:
 		const char *error_message = json_string_value(json_object_get(res_val, "message"));
 		LOGWARNING("Error on mnr_submitBitcoinBlock. Code: %d Message: %s.", error_code, error_message);
 	}
+
 	if (!json_is_null(res_val)) {
-		res_ret = json_string_value(res_val);
-		if (res_ret && strlen(res_ret)) {
-			LOGWARNING("SUBMIT BLOCK RETURNED: %s", res_ret);
-			/* Consider duplicate response as an accepted block */
-			if (safecmp(res_ret, "duplicate"))
-				goto out;
-		} else {
-			LOGWARNING("SUBMIT BLOCK GOT NO RESPONSE!");
+		if(!json_is_string(json_object_get(res_val, "blockImportedResult")) ||
+			!json_is_string(json_object_get(res_val, "blockHash")) ||
+		   	!json_is_string(json_object_get(res_val, "blockIncludedHeight"))) {
+			LOGWARNING("Failed to get one of the values from result in json response to mnr_submitBitcoinBlock");
 			goto out;
 		}
+
+		const char *import_result = json_string_value(json_object_get(res_val, "blockImportedResult"));
+		const char *hash = json_string_value(json_object_get(res_val, "blockHash"));
+		const char *height = json_string_value(json_object_get(res_val, "blockIncludedHeight"));
+		LOGWARNING("mnr_submitBitcoinBlock returned. Status: %s Hash: %s Height: %s.", import_result, hash ,height);
+		ret = true;
 	}
-	LOGWARNING("mnr_submitBitcoinBlock ACCEPTED!");
-	ret = true;
 out:
 	json_decref(val);
 	return ret;
