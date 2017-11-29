@@ -16,7 +16,6 @@
 
 #include "jansson.h"
 #include "hashtable.h"
-#include "jansson_private.h"
 
 #include "rsktestconfig.h"
 
