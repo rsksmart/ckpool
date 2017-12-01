@@ -771,7 +771,7 @@ int connect_socket(char *url, char *port)
 		break;
 	}
 	if (p == NULL) {
-		LOGNOTICE("Failed to connect to %s:%s", url, port);
+		LOGINFO("Failed to connect to %s:%s", url, port);
 		sockd = -1;
 	}
 	freeaddrinfo(servinfo);
@@ -1760,12 +1760,16 @@ int ser_number(uchar *s, int32_t val)
 	int32_t *i32 = (int32_t *)&s[1];
 	int len;
 
-	if (val < 128)
-		len = 1;
-	else if (val < 16512)
-		len = 2;
-	else if (val < 2113664)
+	/* Optimise for the common case for mainnet */
+	if (likely(val > 32767 && val < 8388608))
 		len = 3;
+	else if (val < 17) {
+		s[0] = 0x50 + val;
+		return 1;
+	} else if (val < 128)
+		len = 1;
+	else if (val < 32768)
+		len = 2;
 	else
 		len = 4;
 	*i32 = htole32(val);
