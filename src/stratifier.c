@@ -2123,6 +2123,49 @@ process_block(const workbase_t *wb, const char *coinbase, const int cblen,
 	return gbt_block;
 }
 
+/* Process a block into a message for the generator to submit.
+ * Must hold workbase readcount */
+static char *
+process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cblen,
+              const uchar *data, const uchar *hash, uchar *flip32, char *blockhash)
+{
+  const size_t submitblock_tag_size = 12;
+  const size_t blockhash_size = 64;
+  const size_t blockheader_size = 80;
+  int cursor;
+  const int txns_size = wb->txns ? wb->txns * 64 : 0;
+  const int message_size = submitblock_tag_size + blockhash_size + blockhash_size + cblen + txns_size;
+  char *message;
+  char *txn_hashes;
+
+  // message format is
+  // submitblock:blockhash,blockheader,coinbase,txn_hashes
+  message = ckzalloc(message_size);
+
+  // blockhash
+  flip_32(flip32, hash);
+  __bin2hex(blockhash, flip32, 32);
+
+  // submitblock:blockhash
+  sprintf(message, "submitblock:%s,", blockhash);
+  cursor += submitblock_tag_size + blockhash_size;
+
+  // data is blockheader
+  __bin2hex(message + cursor + 1, data, blockheader_size);
+  cursor += 1 + blockheader_size;
+
+  // coinbase
+  __bin2hex(message + cursor + 1, coinbase, cblen);
+  cursor += 1 + cblen;
+
+  // tx hashes
+  if (wb->txns) {
+    realloc_strcat(&message, wb->txn_hashes);
+  }
+
+  return message;
+}
+
 /* Submit block data to RSK node, free gbt_block if solution is not valid for BTC.
  * Avoid flooding by allowing only 1 submit every 3 seconds. */
 static void rsk_block_submit(ckpool_t *ckp, char *gbt_block, bool submit_bitcoind)
