@@ -2134,7 +2134,8 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
   const size_t blockheader_size = 80;
   int cursor;
   const int txns_size = wb->txns ? wb->txns * 64 : 0;
-  const int message_size = submitblock_tag_size + blockhash_size + blockhash_size + cblen + txns_size;
+  const int message_size = submitblock_tag_size + blockhash_size + 1 + blockheader_size * 2 + 1 + cblen * 2 + txns_size;
+  char hexcoinbase[1024];
   char *message;
   char *txn_hashes;
 
@@ -2148,15 +2149,17 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
 
   // submitblock:blockhash
   sprintf(message, "submitblock:%s,", blockhash);
-  cursor += submitblock_tag_size + blockhash_size;
+  cursor += submitblock_tag_size + blockhash_size + 1;
 
   // data is blockheader
-  __bin2hex(message + cursor + 1, data, blockheader_size);
-  cursor += 1 + blockheader_size;
+  __bin2hex(message + cursor, data, blockheader_size);
+
+  // delimiter
+  strcat(message, ",");
 
   // coinbase
-  __bin2hex(message + cursor + 1, coinbase, cblen);
-  cursor += 1 + cblen;
+  __bin2hex(hexcoinbase, coinbase, cblen);
+  strcat(message, hexcoinbase);
 
   // tx hashes
   if (wb->txns) {
