@@ -62,7 +62,7 @@ function processResults() {
 
         cmd += 'echo -n "$(grep "mining.submit" ckpool.log | wc -l)," >> {1} && '.format(ckpoolLogLocation, outputFileName);
         cmd += 'echo -n "$(grep "] BLOCK ACCEPTED" {0} | wc -l)," >> {1} && '.format(ckpoolLogLocation, outputFileName);
-        cmd += 'echo -n "$(grep ": submitBitcoinBlock:" ckpool.log | wc -l)," >> {1} && '.format(ckpoolLogLocation, outputFileName);
+        cmd += 'echo -n "$(grep ": submitBitcoinSolution:" ckpool.log | wc -l)," >> {1} && '.format(ckpoolLogLocation, outputFileName);
         cmd += 'echo "$(grep ": getblocktemplate:" {0} | wc -l)" >> {1}'.format(ckpoolLogLocation, outputFileName);
 
         console.log("executing remote command", cmd);

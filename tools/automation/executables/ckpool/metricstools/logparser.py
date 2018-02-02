@@ -161,12 +161,12 @@ class LogFile:
             self.process_operation('solution', ":".join([jobid, nonce]), time, ":".join([btc_solution, rsk_solution]))
             return
 
-        elif operation == "submitBitcoinBlock":
+        elif operation == "submitBitcoinSolution":
             message = parse.parse("{:ti}, {:ti}, {}", data)
             start_time = message.fixed[0]
             finish_time = message.fixed[1]
             blockhash = message.fixed[2]
-            self.process_operation('submitBitcoinBlock', blockhash, start_time, '', finish_time)
+            self.process_operation('submitBitcoinSolution', blockhash, start_time, '', finish_time)
             return
 
         print("Error: Failed to parse line: |{}|".format(line))
@@ -253,9 +253,9 @@ class LogFile:
         elif operation == 'solution':
             self.log_action('solution', time, 0.0, ":".join([id, data]))
 
-        elif operation == 'submitBitcoinBlock':
+        elif operation == 'submitBitcoinSolution':
             finish_time = args[0]
-            self.log_action('submitBitcoinBlock', time, delta_ms(time, finish_time), id)
+            self.log_action('submitBitcoinSolution', time, delta_ms(time, finish_time), id)
 
     def log_error(self, exception, errorMessage):
         if self.error_output:
