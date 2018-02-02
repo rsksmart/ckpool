@@ -92,7 +92,7 @@ out:
 
 static const char* rsk_submitBitcoinSolution_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_submitBitcoinSolution\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\"], \"id\": %d}\n";
 
-static bool rsk_submitBitcoinSolution(connsock_t *cs, char *blockheader, char *coinbase, char *txn_hashes)
+static bool rsk_submitBitcoinSolution(connsock_t *cs, char *blockhash, char *blockheader, char *coinbase, char *txn_hashes)
 {
   ckpool_t *ckp = cs->ckp;
   rdata_t *rdata = ckp->rdata;
@@ -105,7 +105,7 @@ static bool rsk_submitBitcoinSolution(connsock_t *cs, char *blockheader, char *c
 
   retry:
   id = ++rdata->lastreqid;
-  ASPRINTF(&rpc_req, rsk_submitBitcoinSolution_req, "blockhash", blockheader, coinbase, txn_hashes, id);
+  ASPRINTF(&rpc_req, rsk_submitBitcoinSolution_req, blockhash, blockheader, coinbase, txn_hashes, id);
   val = json_rpc_call_timeout(cs, rpc_req, 3);
   dealloc(rpc_req);
 
@@ -462,36 +462,36 @@ retry:
       const size_t submit_bitcoin_solution_tag_size = 22;
       const size_t blockhash_size = 64;
       const char delimiter[2] = ",";
-      char *submission_data[3];
+      char *submission_data[4];
       int i = 0;
 
       // message is not complete so do not even try to parse it
-      if(strlen(buf + 1 + submit_bitcoin_solution_tag_size + blockhash_size) == 0) {
+      if(strlen(buf + submit_bitcoin_solution_tag_size + 1) == 0) {
         goto retry;
       }
 
       // parse message
-      submission_data[0] = strtok(buf + 1 + submit_bitcoin_solution_tag_size + blockhash_size, delimiter);
+      submission_data[0] = strtok(buf + submit_bitcoin_solution_tag_size + 1, delimiter);
       while(submission_data[i] != NULL) {
         i++;
         submission_data[i] = strtok(NULL, delimiter);
       }
 
-      // every block must have header and coinbase tx
-      if(!submission_data[0] || !submission_data[1]) {
+      // every block must have hash, header and coinbase tx
+      if(!submission_data[0] || !submission_data[1] || !submission_data[2]) {
         LOGWARNING("blockheader and/or coinbase is empty");
         goto retry;
       }
 
       // if there are no tx hashes, string empty represents null value
-      if(!submission_data[2]) {
-        submission_data[2] = "";
+      if(!submission_data[3]) {
+        submission_data[3] = "";
       }
 
       LOGINFO("Submitting rootstock solution data!");
 
       tv_time(&start_tv);
-      ret = rsk_submitBitcoinSolution(cs, submission_data[0], submission_data[1], submission_data[2]);
+      ret = rsk_submitBitcoinSolution(cs, submission_data[0], submission_data[1], submission_data[2], submission_data[3]);
       tv_time(&finish_tv);
 
       {
