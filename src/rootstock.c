@@ -90,6 +90,69 @@ out:
 	return ret;
 }
 
+static const char* rsk_submitBitcoinSolution_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_submitBitcoinSolution\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\"], \"id\": %d}\n";
+
+static bool rsk_submitBitcoinSolution(connsock_t *cs, char *blockheader, char *coinbase, char *txn_hashes)
+{
+  ckpool_t *ckp = cs->ckp;
+  rdata_t *rdata = ckp->rdata;
+  json_t *val, *res_val;
+  int retries = 0;
+  const char *res_ret;
+  bool ret = false;
+  char *rpc_req;
+  int id;
+
+  retry:
+  id = ++rdata->lastreqid;
+  ASPRINTF(&rpc_req, rsk_submitBitcoinSolution_req, "blockhash", blockheader, coinbase, txn_hashes, id);
+  val = json_rpc_call_timeout(cs, rpc_req, 3);
+  dealloc(rpc_req);
+
+  if (!val) {
+    LOGWARNING("%s:%s Failed to get valid json response to mnr_submitBitcoinSolution", cs->url, cs->port);
+    if (++retries < 1) {
+      Close(cs->fd);
+      goto retry;
+    }
+    return ret;
+  }
+
+  res_val = json_object_get(val, "result");
+  if (!res_val) {
+    res_val = json_object_get(val, "error");
+    if(!res_val){
+      LOGWARNING("Json response to mnr_submitBitcoinSolution format is unknown and can't be parsed");
+      if (++retries < 1) {
+        json_decref(val);
+        goto retry;
+      }
+      goto out;
+    }
+    const int error_code = json_integer_value(json_object_get(res_val, "code"));
+    const char *error_message = json_string_value(json_object_get(res_val, "message"));
+    LOGWARNING("Error on mnr_submitBitcoinSolution. Code: %d Message: %s.", error_code, error_message);
+  }
+
+  if (!json_is_null(res_val)) {
+    if(!json_is_string(json_object_get(res_val, "blockImportedResult")) ||
+       !json_is_string(json_object_get(res_val, "blockHash")) ||
+       !json_is_string(json_object_get(res_val, "blockIncludedHeight"))) {
+      LOGWARNING("Failed to get one of the values from result in json response to mnr_submitBitcoinSolution");
+      goto out;
+    }
+
+    const char *import_result = json_string_value(json_object_get(res_val, "blockImportedResult"));
+    const char *hash = json_string_value(json_object_get(res_val, "blockHash"));
+    const char *height = json_string_value(json_object_get(res_val, "blockIncludedHeight"));
+    LOGWARNING("mnr_submitBitcoinSolution returned. Status: %s Hash: %s Height: %s.", import_result, hash ,height);
+    ret = true;
+  }
+  out:
+  json_decref(val);
+  return ret;
+}
+
 static const char* rsk_submitBitcoinBlock_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_submitBitcoinBlock\", \"params\": [\"%s\"], \"id\": %d}\n";
 
 static bool rsk_submitBitcoinBlock(connsock_t *cs, char *params)
@@ -392,6 +455,60 @@ retry:
 			strcpy(rdata->parentblockhash, rgw->parentblockhash);
 			send_unix_msg(umsg->sockd, rdata->blockhashmerge);
 		}
+    } else if (cmdmatch(buf, "submitBitcoinSolution")) {
+      bool ret;
+      tv_t start_tv;
+      tv_t finish_tv;
+      const size_t submit_bitcoin_solution_tag_size = 22;
+      const size_t blockhash_size = 64;
+      const char delimiter[2] = ",";
+      char *submission_data[3];
+      int i = 0;
+
+      // message is not complete so do not even try to parse it
+      if(strlen(buf + 1 + submit_bitcoin_solution_tag_size + blockhash_size) == 0) {
+        goto retry;
+      }
+
+      // parse message
+      submission_data[0] = strtok(buf + 1 + submit_bitcoin_solution_tag_size + blockhash_size, delimiter);
+      while(submission_data[i] != NULL) {
+        i++;
+        submission_data[i] = strtok(NULL, delimiter);
+      }
+
+      // every block must have header and coinbase tx
+      if(!submission_data[0] || !submission_data[1]) {
+        LOGWARNING("blockheader and/or coinbase is empty");
+        goto retry;
+      }
+
+      // if there are no tx hashes, string empty represents null value
+      if(!submission_data[2]) {
+        submission_data[2] = "";
+      }
+
+      LOGINFO("Submitting rootstock solution data!");
+
+      tv_time(&start_tv);
+      ret = rsk_submitBitcoinSolution(cs, submission_data[0], submission_data[1], submission_data[2]);
+      tv_time(&finish_tv);
+
+      {
+        struct tm start_tm;
+        int start_ms = (int)(start_tv.tv_usec / 1000);
+        struct tm finish_tm;
+        int finish_ms = (int)(finish_tv.tv_usec / 1000);
+        localtime_r(&(start_tv.tv_sec), &start_tm);
+        localtime_r(&(finish_tv.tv_sec), &finish_tm);
+        memset(buf + submit_bitcoin_solution_tag_size + blockhash_size, 0, 1);
+        LOGINFO("ROOTSTOCK: submitBitcoinSolution: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
+                start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
+                start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
+                finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
+                finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
+                buf + 12);
+      }
 	} else if (cmdmatch(buf, "submitblock:")) {
 		bool ret;
 		tv_t start_tv;
