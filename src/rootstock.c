@@ -153,69 +153,6 @@ static bool rsk_submitBitcoinSolution(connsock_t *cs, char *blockhash, char *blo
   return ret;
 }
 
-static const char* rsk_submitBitcoinBlock_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_submitBitcoinBlock\", \"params\": [\"%s\"], \"id\": %d}\n";
-
-static bool rsk_submitBitcoinBlock(connsock_t *cs, char *params)
-{
-	ckpool_t *ckp = cs->ckp;
-	rdata_t *rdata = ckp->rdata;
-	json_t *val, *res_val;
-	int retries = 0;
-	const char *res_ret;
-	bool ret = false;
-	char *rpc_req;
-	int id;
-
-retry:
-	id = ++rdata->lastreqid;
-	ASPRINTF(&rpc_req, rsk_submitBitcoinBlock_req, params, id);
-	val = json_rpc_call_timeout(cs, rpc_req, 3);
-	dealloc(rpc_req);
-	
-	if (!val) {
-		LOGWARNING("%s:%s Failed to get valid json response to mnr_submitBitcoinBlock", cs->url, cs->port);
-		if (++retries < 1) {
-			Close(cs->fd);
-			goto retry;
-		}
-		return ret;
-	}
-
-	res_val = json_object_get(val, "result");
-	if (!res_val) {
-		res_val = json_object_get(val, "error");
-		if(!res_val){
-			LOGWARNING("Json response to mnr_submitBitcoinBlock format is unknown and can't be parsed");
-			if (++retries < 1) {
-				json_decref(val);
-				goto retry;
-			}
-			goto out;
-		}
-		const int error_code = json_integer_value(json_object_get(res_val, "code"));
-		const char *error_message = json_string_value(json_object_get(res_val, "message"));
-		LOGWARNING("Error on mnr_submitBitcoinBlock. Code: %d Message: %s.", error_code, error_message);
-	}
-
-	if (!json_is_null(res_val)) {
-		if(!json_is_string(json_object_get(res_val, "blockImportedResult")) ||
-			!json_is_string(json_object_get(res_val, "blockHash")) ||
-		   	!json_is_string(json_object_get(res_val, "blockIncludedHeight"))) {
-			LOGWARNING("Failed to get one of the values from result in json response to mnr_submitBitcoinBlock");
-			goto out;
-		}
-
-		const char *import_result = json_string_value(json_object_get(res_val, "blockImportedResult"));
-		const char *hash = json_string_value(json_object_get(res_val, "blockHash"));
-		const char *height = json_string_value(json_object_get(res_val, "blockIncludedHeight"));
-		LOGWARNING("mnr_submitBitcoinBlock returned. Status: %s Hash: %s Height: %s.", import_result, hash ,height);
-		ret = true;
-	}
-out:
-	json_decref(val);
-	return ret;
-}
-
 static bool trigger_rsk_update(ckpool_t *ckp, rdata_t* rdata, char *buf)
 {
 	bool notify_flag_update = (ckp->rsknotifypolicy == 1 || ckp->rsknotifypolicy == 3) && rdata->notify;
@@ -509,35 +446,6 @@ retry:
                 finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
                 buf + 12);
       }
-	} else if (cmdmatch(buf, "submitblock:")) {
-		bool ret;
-		tv_t start_tv;
-		tv_t finish_tv;
-		const size_t submitblock_tag_size = 12;
-		const size_t blockhash_size = 64;
-		const size_t data_position = submitblock_tag_size + blockhash_size + 1;
-
-		LOGINFO("Submitting rootstock block data!");
-
-		tv_time(&start_tv);
-		ret = rsk_submitBitcoinBlock(cs, buf + data_position);
-		tv_time(&finish_tv);
-
-		{
-			struct tm start_tm;
-			int start_ms = (int)(start_tv.tv_usec / 1000);
-			struct tm finish_tm;
-			int finish_ms = (int)(finish_tv.tv_usec / 1000);
-			localtime_r(&(start_tv.tv_sec), &start_tm);
-			localtime_r(&(finish_tv.tv_sec), &finish_tm);
-			memset(buf + submitblock_tag_size + blockhash_size, 0, 1);
-			LOGINFO("ROOTSTOCK: submitBitcoinBlock: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
-				start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
-				start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
-				finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
-				finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
-				buf + 12);
-		}
 	} else if (cmdmatch(buf, "reconnect")) {
 		goto reconnect;
 	} else if (cmdmatch(buf, "loglevel")) {
