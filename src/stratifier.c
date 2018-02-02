@@ -2171,7 +2171,7 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
 
 /* Submit block data to RSK node, free gbt_block if solution is not valid for BTC.
  * Avoid flooding by allowing only 1 submit every 3 seconds. */
-static void rsk_block_submit(ckpool_t *ckp, char *gbt_block, bool submit_bitcoind)
+static void rsk_bitcoin_solution_submit(ckpool_t *ckp, char *solution)
 {
 	char *gbt_block_for_rsk;
 	static volatile time_t rsk_submit;
@@ -2192,12 +2192,11 @@ static void rsk_block_submit(ckpool_t *ckp, char *gbt_block, bool submit_bitcoin
         DL_COUNT(ckp->rootstock.unix_msgs, umsg, objects);
        	LOGINFO("ROOTSTOCK: unix msg queue size %d", objects);
 		if(objects < max_umsg_queue_size) {
-            send_proc(ckp->rootstock, gbt_block);
+            send_proc(ckp->rootstock, solution);
         }
 	}
 
-	if (!submit_bitcoind)
-		free(gbt_block);
+    free(solution);
 }
 
 /* Submit block data locally, absorbing and freeing gbt_block */
@@ -6051,7 +6050,7 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 		const uchar *hash, const double diff, const char *coinbase, int cblen,
 		const char *nonce2, const char *nonce, const uint32_t ntime32, const bool stale)
 {
-	char blockhash[68], cdfield[64], *gbt_block;
+	char blockhash[68], cdfield[64], *gbt_block, *bitcoin_solution_for_rsk;
 	sdata_t *sdata = client->sdata;
 	json_t *val = NULL, *val_copy;
 	ckpool_t *ckp = wb->ckp;
@@ -6087,15 +6086,16 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	ts_realtime(&ts_now);
 	sprintf(cdfield, "%lu,%lu", ts_now.tv_sec, ts_now.tv_nsec);
 
-	gbt_block = process_block(wb, coinbase, cblen, data, hash, flip32, blockhash);
-
 	if (submit_rskd) {
-		rsk_block_submit(ckp, gbt_block, submit_bitcoind);
+        bitcoin_solution_for_rsk = process_block_for_rsk(wb, coinbase, cblen, data, hash, flip32, blockhash);
+        rsk_bitcoin_solution_submit(ckp, bitcoin_solution_for_rsk);
 		LOGINFO("ROOTSTOCK: blocksolve: %s, %s, %s, %s", wb->idstring, nonce, nonce2, blockhash);
 	}
 
 	if (!submit_bitcoind)
 		return;
+
+    gbt_block = process_block(wb, coinbase, cblen, data, hash, flip32, blockhash);
 
 	send_node_block(ckp, sdata, client->enonce1, nonce, nonce2, ntime32, wb->id,
 			diff, client->id, coinbase, cblen, data);
