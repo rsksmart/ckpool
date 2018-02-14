@@ -2137,7 +2137,6 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
   const int message_size = submit_bitcoin_solution_tag_size + blockhash_size + 1 + blockheader_size * 2 + 1 + cblen * 2 + txns_size;
   char hexcoinbase[1024];
   char *message;
-  char *txn_hashes;
 
   // message format is
   // submitblock:blockhash,blockheader,coinbase,txn_hashes
