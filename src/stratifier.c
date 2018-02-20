@@ -2133,10 +2133,13 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
   const size_t blockhash_size = 64;
   const size_t blockheader_size = 80;
   const size_t coinbase_hash_hex_size = 64;
+	const size_t txns_count_size = 6;
   int cursor;
-  const int txns_size = wb->txns ? wb->txns * 64 : 0;
-  const int message_size = submit_bitcoin_solution_tag_size + blockhash_size + 1 + blockheader_size * 2 + 1 + cblen * 2 + 1 + coinbase_hash_hex_size + 1 + txns_size;
+  const int merkle_hashes_size = wb->merkles ? wb->merkles * (32 + 1) : 0;
+  const int message_size = submit_bitcoin_solution_tag_size + blockhash_size + 1 + blockheader_size * 2 + 1 +
+														cblen * 2 + 1 + coinbase_hash_hex_size + 1 + merkle_hashes_size + 1 + txns_count_size;
   char hexcoinbase[1024];
+	char txns_count[txns_count_size];
   char *message;
 
   // message format is
@@ -2180,12 +2183,18 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
   // add coinbase (txn 0) hash
   strcat(message, cb_hex);
 
-  strcat(message, " ");
+	// add merkle hashes to calculate partial merkle tree
+	for(int i = 0; i < wb->merkles; i++) {
+		strcat(message, " ");
+		strcat(message, &wb->merklehash[i][0]);
+	}
 
-  // tx hashes
-  if (wb->txns) {
-    realloc_strcat(&message, wb->txn_hashes);
-  }
+	// delimiter
+	strcat(message, ",");
+
+	// add number of txs in the block
+	snprintf(txns_count, txns_count_size, "%x", wb->txns + 1);
+	strcat(message, txns_count);
 
   return message;
 }

@@ -90,9 +90,9 @@ out:
 	return ret;
 }
 
-static const char* rsk_submitBitcoinSolution_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_submitBitcoinSolution\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\"], \"id\": %d}\n";
+static const char* rsk_submitBitcoinSolution_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_submitBitcoinSolution\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\": %d}\n";
 
-static bool rsk_submitBitcoinSolution(connsock_t *cs, char *blockhash, char *blockheader, char *coinbase, char *txn_hashes)
+static bool rsk_submitBitcoinSolution(connsock_t *cs, char *blockhash, char *blockheader, char *coinbase, char *merkle_hashes, char* block_txn_count)
 {
   ckpool_t *ckp = cs->ckp;
   rdata_t *rdata = ckp->rdata;
@@ -105,7 +105,7 @@ static bool rsk_submitBitcoinSolution(connsock_t *cs, char *blockhash, char *blo
 
   retry:
   id = ++rdata->lastreqid;
-  ASPRINTF(&rpc_req, rsk_submitBitcoinSolution_req, blockhash, blockheader, coinbase, txn_hashes, id);
+  ASPRINTF(&rpc_req, rsk_submitBitcoinSolution_req, blockhash, blockheader, coinbase, merkle_hashes, block_txn_count, id);
   val = json_rpc_call_timeout(cs, rpc_req, 3);
   dealloc(rpc_req);
 
@@ -399,7 +399,7 @@ retry:
       const size_t submit_bitcoin_solution_tag_size = 22;
       const size_t blockhash_size = 64;
       const char delimiter[2] = ",";
-      char *submission_data[4];
+      char *submission_data[5];
       int i = 0;
 
       // message is not complete so do not even try to parse it
@@ -420,15 +420,11 @@ retry:
         goto retry;
       }
 
-      // if there are no tx hashes, string empty represents null value
-      if(!submission_data[3]) {
-        submission_data[3] = "";
-      }
 
       LOGINFO("Submitting rootstock solution data!");
 
       tv_time(&start_tv);
-      ret = rsk_submitBitcoinSolution(cs, submission_data[0], submission_data[1], submission_data[2], submission_data[3]);
+      ret = rsk_submitBitcoinSolution(cs, submission_data[0], submission_data[1], submission_data[2], submission_data[3], submission_data[4]);
       tv_time(&finish_tv);
 
       {
