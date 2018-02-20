@@ -2135,7 +2135,7 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
   const size_t coinbase_hash_hex_size = 64;
   int cursor;
   const int txns_size = wb->txns ? wb->txns * 64 : 0;
-  const int message_size = submit_bitcoin_solution_tag_size + blockhash_size + 1 + blockheader_size * 2 + 1 + cblen * 2 + 1 + coinbase_hash_hex_size + txns_size;
+  const int message_size = submit_bitcoin_solution_tag_size + blockhash_size + 1 + blockheader_size * 2 + 1 + cblen * 2 + 1 + coinbase_hash_hex_size + 1 + txns_size;
   char hexcoinbase[1024];
   char *message;
 
@@ -2179,6 +2179,8 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
 
   // add coinbase (txn 0) hash
   strcat(message, cb_hex);
+
+  strcat(message, " ");
 
   // tx hashes
   if (wb->txns) {
