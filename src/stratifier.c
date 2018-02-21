@@ -2130,13 +2130,14 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
               const uchar *data, const uchar *hash, uchar *flip32, char *blockhash)
 {
   const size_t submit_bitcoin_solution_tag_size = 22;
-  const size_t blockhash_size = 64;
+  const size_t blockhash_hex_size = 64;
   const size_t blockheader_size = 80;
   const size_t coinbase_hash_hex_size = 64;
 	const size_t txns_count_size = 6;
+	const size_t delimiter = 1;
   int cursor;
-  const int merkle_hashes_size = wb->merkles ? wb->merkles * (32 + 1) : 0;
-  const int message_size = submit_bitcoin_solution_tag_size + blockhash_size + 1 + blockheader_size * 2 + 1 +
+  const int merkle_hashes_size = wb->merkles ? wb->merkles * (blockhash_hex_size + 1 + delimiter) : 0;
+  const int message_size = submit_bitcoin_solution_tag_size + blockhash_hex_size + 1 + blockheader_size * 2 + 1 +
 														cblen * 2 + 1 + coinbase_hash_hex_size + 1 + merkle_hashes_size + 1 + txns_count_size;
   char hexcoinbase[1024];
 	char txns_count[txns_count_size];
@@ -2152,7 +2153,7 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
 
   // submitblock:blockhash
   sprintf(message, "submitBitcoinSolution:%s,", blockhash);
-  cursor += submit_bitcoin_solution_tag_size + blockhash_size + 1;
+  cursor += submit_bitcoin_solution_tag_size + blockhash_hex_size + 1;
 
   // data is blockheader
   __bin2hex(message + cursor, data, blockheader_size);
@@ -2167,18 +2168,14 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
   // delimiter
   strcat(message, ",");
 
-  // calculate coinbase hash
+  // Calculate coinbase tx hash. It should be done as reverseBytes(twiceSha256(coinbase)).
+	// This hash needs to be reversed because it's going to be part of the merkle hashes list.
+	// Hence, apply twice reverseBytes is the same as not reversing at all.
   uchar cb_hash[32];
-	uchar cb_hash_reversed[32];
   gen_hash((uchar *)coinbase, cb_hash, cblen);
 
-	uint32_t *data32, *swap32;
-	data32 = (uint32_t *)cb_hash;
-	swap32 = (uint32_t *)cb_hash_reversed;
-	bswap_256(swap32, data32);
-
-	char cb_hex[64];
-	__bin2hex(cb_hex, cb_hash_reversed, 32);
+	char cb_hex[coinbase_hash_hex_size + 1];
+	__bin2hex(cb_hex, cb_hash, 32);
 
   // add coinbase (txn 0) hash
   strcat(message, cb_hex);
