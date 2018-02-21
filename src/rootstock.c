@@ -90,9 +90,9 @@ out:
 	return ret;
 }
 
-static const char* rsk_submitBitcoinSolution_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_submitBitcoinSolution\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\": %d}\n";
+static const char* rsk_submitBitcoinBlockPartialMerkle_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_submitBitcoinBlockPartialMerkle\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\": %d}\n";
 
-static bool rsk_submitBitcoinSolution(connsock_t *cs, char *blockhash, char *blockheader, char *coinbase, char *merkle_hashes, char* block_txn_count)
+static bool rsk_submitBitcoinBlockPartialMerkle(connsock_t *cs, char *blockhash, char *blockheader, char *coinbase, char *merkle_hashes, char* block_txn_count)
 {
   ckpool_t *ckp = cs->ckp;
   rdata_t *rdata = ckp->rdata;
@@ -105,7 +105,7 @@ static bool rsk_submitBitcoinSolution(connsock_t *cs, char *blockhash, char *blo
 
   retry:
   id = ++rdata->lastreqid;
-  ASPRINTF(&rpc_req, rsk_submitBitcoinSolution_req, blockhash, blockheader, coinbase, merkle_hashes, block_txn_count, id);
+  ASPRINTF(&rpc_req, rsk_submitBitcoinBlockPartialMerkle_req, blockhash, blockheader, coinbase, merkle_hashes, block_txn_count, id);
   val = json_rpc_call_timeout(cs, rpc_req, 3);
   dealloc(rpc_req);
 
@@ -392,11 +392,11 @@ retry:
 			strcpy(rdata->parentblockhash, rgw->parentblockhash);
 			send_unix_msg(umsg->sockd, rdata->blockhashmerge);
 		}
-    } else if (cmdmatch(buf, "submitBitcoinSolution")) {
+    } else if (cmdmatch(buf, "submitBitcoinBlockPartialMerkle")) {
       bool ret;
       tv_t start_tv;
       tv_t finish_tv;
-      const size_t submit_bitcoin_solution_tag_size = 22;
+      const size_t submit_bitcoin_solution_tag_size = 32;
       const size_t blockhash_size = 64;
       const char delimiter[2] = ",";
       char *submission_data[5];
@@ -423,7 +423,7 @@ retry:
       LOGINFO("Submitting rootstock solution data!");
 
       tv_time(&start_tv);
-      ret = rsk_submitBitcoinSolution(cs, submission_data[0], submission_data[1], submission_data[2], submission_data[3], submission_data[4]);
+      ret = rsk_submitBitcoinBlockPartialMerkle(cs, submission_data[0], submission_data[1], submission_data[2], submission_data[3], submission_data[4]);
       tv_time(&finish_tv);
 
       {
@@ -434,7 +434,7 @@ retry:
         localtime_r(&(start_tv.tv_sec), &start_tm);
         localtime_r(&(finish_tv.tv_sec), &finish_tm);
         memset(buf + submit_bitcoin_solution_tag_size + blockhash_size, 0, 1);
-        LOGINFO("ROOTSTOCK: submitBitcoinSolution: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
+        LOGINFO("ROOTSTOCK: submitBitcoinBlockPartialMerkle: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
                 start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
                 start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
                 finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,

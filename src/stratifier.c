@@ -2129,7 +2129,7 @@ static char *
 process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cblen,
               const uchar *data, const uchar *hash, uchar *flip32, char *blockhash)
 {
-  const size_t submit_bitcoin_solution_tag_size = 22;
+  const size_t submit_bitcoin_solution_tag_size = 32;
   const size_t blockhash_hex_size = 64;
   const size_t blockheader_size = 80;
   const size_t coinbase_hash_hex_size = 64;
@@ -2153,8 +2153,8 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
   flip_32(flip32, hash);
   __bin2hex(blockhash, flip32, 32);
 
-  // submitblock:blockhash
-  sprintf(message, "submitBitcoinSolution:%s,", blockhash);
+  // submitBitcoinBlockPartialMerkle:blockhash
+  sprintf(message, "submitBitcoinBlockPartialMerkle:%s,", blockhash);
   cursor += submit_bitcoin_solution_tag_size + blockhash_hex_size + 1;
 
   // Data is blockheader
