@@ -2140,14 +2140,16 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
   const int message_size = submit_bitcoin_solution_tag_size + blockhash_hex_size + 1 + blockheader_size * 2 + 1 +
 														cblen * 2 + 1 + coinbase_hash_hex_size + 1 + merkle_hashes_size + 1 + txns_count_size;
   char hexcoinbase[1024];
-	char txns_count[txns_count_size];
+	char comma_delimiter[2] = ",";
+	char space_delimiter[2] = " ";
+	char txns_count[7];
   char *message;
 
-  // message format is
+  // Message format is
   // submitblock:blockhash,blockheader,coinbase,txn_hashes
   message = ckzalloc(message_size);
 
-  // blockhash
+  // Blockhash
   flip_32(flip32, hash);
   __bin2hex(blockhash, flip32, 32);
 
@@ -2155,18 +2157,16 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
   sprintf(message, "submitBitcoinSolution:%s,", blockhash);
   cursor += submit_bitcoin_solution_tag_size + blockhash_hex_size + 1;
 
-  // data is blockheader
+  // Data is blockheader
   __bin2hex(message + cursor, data, blockheader_size);
 
-  // delimiter
-  strcat(message, ",");
+  strncat(message, comma_delimiter, sizeof(comma_delimiter) - 1);
 
-  // coinbase
+  // Coinbase
   __bin2hex(hexcoinbase, coinbase, cblen);
-  strcat(message, hexcoinbase);
+  strncat(message, hexcoinbase, sizeof(hexcoinbase) - 1);
 
-  // delimiter
-  strcat(message, ",");
+	strncat(message, comma_delimiter, sizeof(comma_delimiter) - 1);
 
   // Calculate coinbase tx hash. It should be done as reverseBytes(twiceSha256(coinbase)).
 	// This hash needs to be reversed because it's going to be part of the merkle hashes list.
@@ -2177,21 +2177,20 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
 	char cb_hex[coinbase_hash_hex_size + 1];
 	__bin2hex(cb_hex, cb_hash, 32);
 
-  // add coinbase (txn 0) hash
-  strcat(message, cb_hex);
+  // Add coinbase hash.
+  strncat(message, cb_hex, sizeof(cb_hex) - 1);
 
-	// add merkle hashes to calculate partial merkle tree
+	// Add merkle hashes to calculate partial merkle tree
 	for(int i = 0; i < wb->merkles; i++) {
-		strcat(message, " ");
-		strcat(message, &wb->merklehash[i][0]);
+		strncat(message, space_delimiter, sizeof(space_delimiter) - 1);
+		strncat(message, &wb->merklehash[i][0], blockhash_hex_size + 1);
 	}
 
-	// delimiter
-	strcat(message, ",");
+	strncat(message, comma_delimiter, sizeof(comma_delimiter) - 1);
 
-	// add number of txs in the block
+	// Add number of txs in the block. Plus 1 is because of coinbase
 	snprintf(txns_count, txns_count_size, "%x", wb->txns + 1);
-	strcat(message, txns_count);
+	strncat(message, txns_count, sizeof(txns_count) - 1);
 
   return message;
 }
