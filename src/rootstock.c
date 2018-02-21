@@ -402,24 +402,23 @@ retry:
       char *submission_data[5];
       int i = 0;
 
-      // message is not complete so do not even try to parse it
+      // Message is not complete so do not even try to parse it
       if(strlen(buf + submit_bitcoin_solution_tag_size + 1) == 0) {
         goto retry;
       }
 
-      // parse message
+      // Parse message
       submission_data[0] = strtok(buf + submit_bitcoin_solution_tag_size + 1, delimiter);
       while(submission_data[i] != NULL) {
         i++;
         submission_data[i] = strtok(NULL, delimiter);
       }
 
-      // every block must have hash, header and coinbase tx
-      if(!submission_data[0] || !submission_data[1] || !submission_data[2]) {
+      // Every block must have hash, header, coinbase tx, merkle hashes and txn_count
+      if(!submission_data[0] || !submission_data[1] || !submission_data[2] || !submission_data[3] || !submission_data[4]) {
         LOGWARNING("blockheader and/or coinbase is empty");
         goto retry;
       }
-
 
       LOGINFO("Submitting rootstock solution data!");
 
