@@ -32,6 +32,10 @@
 #include "rootstock.h"
 
 #include "rsktestconfig.h"
+
+#define HASH_SIZE 32
+#define BLOCK_HEADER_SIZE 80
+
 /* Consistent across all pool instances */
 static const char *workpadding = "000000800000000000000000000000000000000000000000000000000000000000000000000000000000000080020000";
 static const char *scriptsig_header = "01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff";
@@ -2129,68 +2133,42 @@ static char *
 process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cblen,
               const uchar *data, const uchar *hash, uchar *flip32, char *blockhash)
 {
-  const size_t submit_bitcoin_solution_tag_size = 32;
-  const size_t blockhash_hex_size = 64;
-  const size_t blockheader_size = 80;
-  const size_t coinbase_hash_hex_size = 64;
-	const size_t txns_count_size = 6;
-	const size_t delimiter = 1;
-  int cursor;
-  const int merkle_hashes_size = wb->merkles ? wb->merkles * (blockhash_hex_size + 1 + delimiter) : 0;
-  const int message_size = submit_bitcoin_solution_tag_size + blockhash_hex_size + 1 + blockheader_size * 2 + 1 +
-														cblen * 2 + 1 + coinbase_hash_hex_size + 1 + merkle_hashes_size + 1 + txns_count_size;
-  char hexcoinbase[1024];
-	char comma_delimiter[2] = ",";
-	char space_delimiter[2] = " ";
-	char txns_count[7];
+  const size_t space_delimiter_size = 1;
+  const size_t merkle_hashes_size = wb->merkles ? wb->merkles * (HASH_SIZE * 2 + 1 + space_delimiter_size) : 0;
+  char blockheader[BLOCK_HEADER_SIZE * 2 + 1];
+  char coinbase_hex[1024];
+  uchar cb_hash[HASH_SIZE];
+  char cb_hash_hex[HASH_SIZE * 2 + 1];
+  char *space_delimiter = " ";
+  char *merkle_hashes = ckzalloc(merkle_hashes_size);
   char *message;
-
-  // Message format is
-  // submitblock:blockhash,blockheader,coinbase,txn_hashes
-  message = ckzalloc(message_size);
 
   // Blockhash
   flip_32(flip32, hash);
-  __bin2hex(blockhash, flip32, 32);
-
-  // submitBitcoinBlockPartialMerkle:blockhash
-  sprintf(message, "submitBitcoinBlockPartialMerkle:%s,", blockhash);
-  cursor += submit_bitcoin_solution_tag_size + blockhash_hex_size + 1;
+  __bin2hex(blockhash, flip32, HASH_SIZE);
 
   // Data is blockheader
-  __bin2hex(message + cursor, data, blockheader_size);
-
-  strncat(message, comma_delimiter, sizeof(comma_delimiter) - 1);
+  __bin2hex(blockheader, data, BLOCK_HEADER_SIZE);
 
   // Coinbase
-  __bin2hex(hexcoinbase, coinbase, cblen);
-  strncat(message, hexcoinbase, sizeof(hexcoinbase) - 1);
+  __bin2hex(coinbase_hex, coinbase, cblen);
 
-	strncat(message, comma_delimiter, sizeof(comma_delimiter) - 1);
-
-  // Calculate coinbase tx hash. It should be done as reverseBytes(twiceSha256(coinbase)).
-	// This hash needs to be reversed because it's going to be part of the merkle hashes list.
-	// Hence, apply twice reverseBytes is the same as not reversing at all.
-  uchar cb_hash[32];
+  // Add merkle hashes to calculate partial merkle tree
+  // 1. Calculate coinbase tx hash. It should be done as reverseBytes(twiceSha256(coinbase)).
+  // This hash needs to be reversed because it's going to be part of the merkle hashes list.
+  // Hence, apply twice reverseBytes is the same as not reversing at all.
   gen_hash((uchar *)coinbase, cb_hash, cblen);
+  __bin2hex(cb_hash_hex, cb_hash, HASH_SIZE);
 
-	char cb_hex[coinbase_hash_hex_size + 1];
-	__bin2hex(cb_hex, cb_hash, 32);
+  // 2. Add hashes for block txns from 1..n
+  for(int i = 0; i < wb->merkles; i++) {
+  	strncat(merkle_hashes, space_delimiter, sizeof(space_delimiter) - 1);
+	  strncat(merkle_hashes, &wb->merklehash[i][0], HASH_SIZE * 2 + 1);
+  }
 
-  // Add coinbase hash.
-  strncat(message, cb_hex, sizeof(cb_hex) - 1);
+  ASPRINTF(&message, "submitBitcoinBlockPartialMerkle:%s,%s,%s,%s%s,%x", blockhash, blockheader, coinbase_hex, cb_hash_hex, merkle_hashes, wb->txns + 1);
 
-	// Add merkle hashes to calculate partial merkle tree
-	for(int i = 0; i < wb->merkles; i++) {
-		strncat(message, space_delimiter, sizeof(space_delimiter) - 1);
-		strncat(message, &wb->merklehash[i][0], blockhash_hex_size + 1);
-	}
-
-	strncat(message, comma_delimiter, sizeof(comma_delimiter) - 1);
-
-	// Add number of txs in the block. Plus 1 is because of coinbase
-	snprintf(txns_count, txns_count_size, "%x", wb->txns + 1);
-	strncat(message, txns_count, sizeof(txns_count) - 1);
+  free(merkle_hashes);
 
   return message;
 }

@@ -22,6 +22,8 @@
 #define BIN_HASH_SIZE sizeof(((rsk_getwork_t*)0)->blockhashmergebin)
 #define HEX_HASH_SIZE sizeof(((rsk_getwork_t*)0)->blockhashmerge)
 #define HEX_TARGET_SIZE sizeof(((rsk_getwork_t*)0)->target)
+#define HASH_SIZE 32
+#define SUBMIT_BITCOIN_MERKLE_PARAMETER_NUMBER 5
 
 static const char *rsk_getwork_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_getWork\", \"params\": [], \"id\": %d}\n";
 
@@ -92,7 +94,7 @@ out:
 
 static const char* rsk_submitBitcoinBlockPartialMerkle_req = "{\"jsonrpc\": \"2.0\", \"method\": \"mnr_submitBitcoinBlockPartialMerkle\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\": %d}\n";
 
-static bool rsk_submitBitcoinBlockPartialMerkle(connsock_t *cs, char *blockhash, char *blockheader, char *coinbase, char *merkle_hashes, char* block_txn_count)
+static bool rsk_submitBitcoinBlockPartialMerkle(connsock_t *cs, char **submission_data)
 {
   ckpool_t *ckp = cs->ckp;
   rdata_t *rdata = ckp->rdata;
@@ -105,12 +107,12 @@ static bool rsk_submitBitcoinBlockPartialMerkle(connsock_t *cs, char *blockhash,
 
   retry:
   id = ++rdata->lastreqid;
-  ASPRINTF(&rpc_req, rsk_submitBitcoinBlockPartialMerkle_req, blockhash, blockheader, coinbase, merkle_hashes, block_txn_count, id);
+  ASPRINTF(&rpc_req, rsk_submitBitcoinBlockPartialMerkle_req, submission_data[0], submission_data[1], submission_data[2], submission_data[3], submission_data[4], id);
   val = json_rpc_call_timeout(cs, rpc_req, 3);
   dealloc(rpc_req);
 
   if (!val) {
-    LOGWARNING("%s:%s Failed to get valid json response to mnr_submitBitcoinSolution", cs->url, cs->port);
+    LOGWARNING("%s:%s Failed to get valid json response to mnr_submitBitcoinBlockPartialMerkle", cs->url, cs->port);
     if (++retries < 1) {
       Close(cs->fd);
       goto retry;
@@ -122,7 +124,7 @@ static bool rsk_submitBitcoinBlockPartialMerkle(connsock_t *cs, char *blockhash,
   if (!res_val) {
     res_val = json_object_get(val, "error");
     if(!res_val){
-      LOGWARNING("Json response to mnr_submitBitcoinSolution format is unknown and can't be parsed");
+      LOGWARNING("Json response to mnr_submitBitcoinBlockPartialMerkle format is unknown and can't be parsed");
       if (++retries < 1) {
         json_decref(val);
         goto retry;
@@ -131,21 +133,21 @@ static bool rsk_submitBitcoinBlockPartialMerkle(connsock_t *cs, char *blockhash,
     }
     const int error_code = json_integer_value(json_object_get(res_val, "code"));
     const char *error_message = json_string_value(json_object_get(res_val, "message"));
-    LOGWARNING("Error on mnr_submitBitcoinSolution. Code: %d Message: %s.", error_code, error_message);
+    LOGWARNING("Error on mnr_submitBitcoinBlockPartialMerkle. Code: %d Message: %s.", error_code, error_message);
   }
 
   if (!json_is_null(res_val)) {
     if(!json_is_string(json_object_get(res_val, "blockImportedResult")) ||
        !json_is_string(json_object_get(res_val, "blockHash")) ||
        !json_is_string(json_object_get(res_val, "blockIncludedHeight"))) {
-      LOGWARNING("Failed to get one of the values from result in json response to mnr_submitBitcoinSolution");
+      LOGWARNING("Failed to get one of the values from result in json response to mnr_submitBitcoinBlockPartialMerkle");
       goto out;
     }
 
     const char *import_result = json_string_value(json_object_get(res_val, "blockImportedResult"));
     const char *hash = json_string_value(json_object_get(res_val, "blockHash"));
     const char *height = json_string_value(json_object_get(res_val, "blockIncludedHeight"));
-    LOGWARNING("mnr_submitBitcoinSolution returned. Status: %s Hash: %s Height: %s.", import_result, hash ,height);
+    LOGWARNING("mnr_submitBitcoinBlockPartialMerkle returned. Status: %s Hash: %s Height: %s.", import_result, hash ,height);
     ret = true;
   }
   out:
@@ -397,9 +399,8 @@ retry:
       tv_t start_tv;
       tv_t finish_tv;
       const size_t submit_bitcoin_solution_tag_size = 32;
-      const size_t blockhash_size = 64;
-      const char delimiter[2] = ",";
-      char *submission_data[5];
+      const char *delimiter = ",";
+      char *submission_data[SUBMIT_BITCOIN_MERKLE_PARAMETER_NUMBER];
       int i = 0;
 
       // Message is not complete so do not even try to parse it
@@ -416,14 +417,14 @@ retry:
 
       // Every block must have hash, header, coinbase tx, merkle hashes and txn_count
       if(!submission_data[0] || !submission_data[1] || !submission_data[2] || !submission_data[3] || !submission_data[4]) {
-        LOGWARNING("blockheader and/or coinbase is empty");
+        LOGWARNING("submitBitcoinBlockPartialMerkle message from unix socket is incomplete.");
         goto retry;
       }
 
       LOGINFO("Submitting rootstock solution data!");
 
       tv_time(&start_tv);
-      ret = rsk_submitBitcoinBlockPartialMerkle(cs, submission_data[0], submission_data[1], submission_data[2], submission_data[3], submission_data[4]);
+      ret = rsk_submitBitcoinBlockPartialMerkle(cs, submission_data);
       tv_time(&finish_tv);
 
       {
@@ -433,7 +434,7 @@ retry:
         int finish_ms = (int)(finish_tv.tv_usec / 1000);
         localtime_r(&(start_tv.tv_sec), &start_tm);
         localtime_r(&(finish_tv.tv_sec), &finish_tm);
-        memset(buf + submit_bitcoin_solution_tag_size + blockhash_size, 0, 1);
+        memset(buf + submit_bitcoin_solution_tag_size + HASH_SIZE * 2, 0, 1);
         LOGINFO("ROOTSTOCK: submitBitcoinBlockPartialMerkle: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
                 start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
                 start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
