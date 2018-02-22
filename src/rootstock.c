@@ -401,7 +401,7 @@ retry:
       const size_t submit_bitcoin_solution_tag_size = 32;
       const char *delimiter = ",";
       char *submission_data[SUBMIT_BITCOIN_MERKLE_PARAMETER_NUMBER];
-      int i = 0;
+      short i = 0;
 
       // Message is not complete so do not even try to parse it
       if(strlen(buf + submit_bitcoin_solution_tag_size + 1) == 0) {
@@ -416,7 +416,7 @@ retry:
       }
 
       // Every block must have hash, header, coinbase tx, merkle hashes and txn_count
-      if(!submission_data[0] || !submission_data[1] || !submission_data[2] || !submission_data[3] || !submission_data[4]) {
+      if(i != SUBMIT_BITCOIN_MERKLE_PARAMETER_NUMBER) {
         LOGWARNING("submitBitcoinBlockPartialMerkle message from unix socket is incomplete.");
         goto retry;
       }
