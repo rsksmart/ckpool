@@ -2137,8 +2137,7 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
   char coinbase_hex[1024];
   uchar cb_hash[HASH_SIZE];
   char cb_hash_hex[HASH_SIZE * 2 + 1];
-  char *space_delimiter = " ";
-  char *merkle_hashes;
+  char *merkle_hashes = NULL;
   char *message;
 
   // Blockhash
@@ -2169,9 +2168,11 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
     tmp = merkle_hashes;
   }
 
-  ASPRINTF(&message, "submitBitcoinBlockPartialMerkle:%s,%s,%s,%s%s,%x", blockhash, blockheader, coinbase_hex, cb_hash_hex, merkle_hashes, wb->txns + 1);
+  ASPRINTF(&message, "submitBitcoinBlockPartialMerkle:%s,%s,%s,%s%s,%x", blockhash, blockheader, coinbase_hex, cb_hash_hex, merkle_hashes == NULL ? "" : merkle_hashes, wb->txns + 1);
 
-  free(merkle_hashes);
+  if (merkle_hashes) {
+    free(merkle_hashes);
+  }
 
   return message;
 }
