@@ -2133,14 +2133,12 @@ static char *
 process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cblen,
               const uchar *data, const uchar *hash, uchar *flip32, char *blockhash)
 {
-  const size_t space_delimiter_size = 1;
-  const size_t merkle_hashes_size = wb->merkles ? wb->merkles * (HASH_SIZE * 2 + 1 + space_delimiter_size) : 0;
   char blockheader[BLOCK_HEADER_SIZE * 2 + 1];
   char coinbase_hex[1024];
   uchar cb_hash[HASH_SIZE];
   char cb_hash_hex[HASH_SIZE * 2 + 1];
   char *space_delimiter = " ";
-  char *merkle_hashes = ckzalloc(merkle_hashes_size);
+  char *merkle_hashes;
   char *message;
 
   // Blockhash
@@ -2160,10 +2158,15 @@ process_block_for_rsk(const workbase_t *wb, const char *coinbase, const int cble
   gen_hash((uchar *)coinbase, cb_hash, cblen);
   __bin2hex(cb_hash_hex, cb_hash, HASH_SIZE);
 
+  char *tmp = NULL;
   // 2. Add hashes for block txns from 1..n
   for(int i = 0; i < wb->merkles; i++) {
-  	strncat(merkle_hashes, space_delimiter, sizeof(space_delimiter) - 1);
-	  strncat(merkle_hashes, &wb->merklehash[i][0], HASH_SIZE * 2 + 1);
+    ASPRINTF(&merkle_hashes, "%s %s", (tmp == NULL ? "" : tmp), &wb->merklehash[i][0]);
+
+    if (tmp) {
+      free(tmp);
+    }
+    tmp = merkle_hashes;
   }
 
   ASPRINTF(&message, "submitBitcoinBlockPartialMerkle:%s,%s,%s,%s%s,%x", blockhash, blockheader, coinbase_hex, cb_hash_hex, merkle_hashes, wb->txns + 1);
