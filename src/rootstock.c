@@ -440,7 +440,7 @@ retry:
                 start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
                 finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
                 finish_tm.tm_hour, finish_tm.tm_min, finish_tm.tm_sec, finish_ms,
-                buf + 12);
+                buf);
       }
 	} else if (cmdmatch(buf, "reconnect")) {
 		goto reconnect;
