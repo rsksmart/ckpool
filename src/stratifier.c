@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2017 Con Kolivas
+ * Copyright 2014-2018 Con Kolivas
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -119,6 +119,8 @@ struct user_instance {
 	int id;
 	char *secondaryuserid;
 	bool btcaddress;
+	bool script;
+	bool segwit;
 
 	/* A linked list of all connected instances of this user */
 	stratum_instance_t *clients;
@@ -393,10 +395,10 @@ static const char *ckdb_seq_names[] = {
 struct stratifier_data {
 	ckpool_t *ckp;
 
-	char pubkeytxnbin[25];
-	int pubkeytxnlen;
-	char donkeytxnbin[25];
-	int donkeytxnlen;
+	char txnbin[48];
+	int txnlen;
+	char dontxnbin[48];
+	int dontxnlen;
 
 	pool_stats_t stats;
 	/* Protects changes to pool stats */
@@ -584,7 +586,7 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 	len += wb->enonce1varlen;
 	len += wb->enonce2varlen;
 
-	wb->coinb2bin = ckzalloc(256);
+	wb->coinb2bin = ckzalloc(512);
 	memcpy(wb->coinb2bin, "\x0a\x63\x6b\x70\x6f\x6f\x6c", 7);
 	wb->coinb2len = 7;
 	if (ckp->btcsig) {
@@ -628,9 +630,9 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 	*u64 = htole64(g64);
 	wb->coinb2len += 8;
 
-	wb->coinb2bin[wb->coinb2len++] = sdata->pubkeytxnlen;
-	memcpy(wb->coinb2bin + wb->coinb2len, sdata->pubkeytxnbin, sdata->pubkeytxnlen);
-	wb->coinb2len += sdata->pubkeytxnlen;
+	wb->coinb2bin[wb->coinb2len++] = sdata->txnlen;
+	memcpy(wb->coinb2bin + wb->coinb2len, sdata->txnbin, sdata->txnlen);
+	wb->coinb2len += sdata->txnlen;
 
 	if (wb->insert_witness) {
 		// 0 value
@@ -649,9 +651,9 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 		*u64 = htole64(d64);
 		wb->coinb2len += 8;
 
-		wb->coinb2bin[wb->coinb2len++] = sdata->donkeytxnlen;
-		memcpy(wb->coinb2bin + wb->coinb2len, sdata->donkeytxnbin, sdata->donkeytxnlen);
-		wb->coinb2len += sdata->donkeytxnlen;
+		wb->coinb2bin[wb->coinb2len++] = sdata->dontxnlen;
+		memcpy(wb->coinb2bin + wb->coinb2len, sdata->dontxnbin, sdata->dontxnlen);
+		wb->coinb2len += sdata->dontxnlen;
 	}
 
 	if (ckp->rskds) {
@@ -2530,8 +2532,8 @@ static sdata_t *duplicate_sdata(const sdata_t *sdata)
 	dsdata->ckp = sdata->ckp;
 
 	/* Copy the transaction binaries for workbase creation */
-	memcpy(dsdata->pubkeytxnbin, sdata->pubkeytxnbin, 25);
-	memcpy(dsdata->donkeytxnbin, sdata->donkeytxnbin, 25);
+	memcpy(dsdata->txnbin, sdata->txnbin, 48);
+	memcpy(dsdata->dontxnbin, sdata->dontxnbin, 48);
 
 	/* Use the same work queues for all subproxies */
 	dsdata->ssends = sdata->ssends;
@@ -5494,8 +5496,8 @@ static user_instance_t *generate_user(ckpool_t *ckp, stratum_instance_t *client,
 	ck_wunlock(&sdata->instance_lock);
 
 	/* Is this a btc address based username? */
-	if (!ckp->proxy && (new_user || !user->btcaddress) && (len > 26 && len < 35))
-		user->btcaddress = generator_checkaddr(ckp, username);
+	if (!ckp->proxy && (new_user || !user->btcaddress))
+		user->btcaddress = generator_checkaddr(ckp, username, &user->script, &user->segwit);
 	if (new_user) {
 		LOGNOTICE("Added new user %s%s", username, user->btcaddress ?
 			  " as address based registration" : "");
@@ -7005,7 +7007,7 @@ static user_instance_t *generate_remote_user(ckpool_t *ckp, const char *workerna
 
 	/* Is this a btc address based username? */
 	if (!ckp->proxy && (new_user || !user->btcaddress) && (len > 26 && len < 35))
-		user->btcaddress = generator_checkaddr(ckp, username);
+		user->btcaddress = generator_checkaddr(ckp, username, &user->script, &user->segwit);
 	if (new_user) {
 		LOGNOTICE("Added new remote user %s%s", username, user->btcaddress ?
 			  " as address based registration" : "");
@@ -8775,13 +8777,6 @@ static void read_poolstats(ckpool_t *ckp, int *tvsec_diff)
 	}
 }
 
-/* Braindead check to see if this btcaddress is an M of N script address which
- * is currently unsupported as a generation address. */
-static bool script_address(const char *btcaddress)
-{
-	return btcaddress[0] == '3';
-}
-
 void *stratifier(void *arg)
 {
 	proc_instance_t *pi = (proc_instance_t *)arg;
@@ -8805,30 +8800,18 @@ void *stratifier(void *arg)
 		cksleep_ms(10);
 
 	if (!ckp->proxy) {
-		if (!generator_checkaddr(ckp, ckp->btcaddress)) {
+		if (!generator_checkaddr(ckp, ckp->btcaddress, &ckp->script, &ckp->segwit)) {
 			LOGEMERG("Fatal: btcaddress invalid according to bitcoind");
 			goto out;
 		}
 
 		/* Store this for use elsewhere */
 		hex2bin(scriptsig_header_bin, scriptsig_header, 41);
-		if (script_address(ckp->btcaddress)) {
-			address_to_scripttxn(sdata->pubkeytxnbin, ckp->btcaddress);
-			sdata->pubkeytxnlen = 23;
-		} else {
-			address_to_pubkeytxn(sdata->pubkeytxnbin, ckp->btcaddress);
-			sdata->pubkeytxnlen = 25;
-		}
+		sdata->txnlen = address_to_txn(sdata->txnbin, ckp->btcaddress, ckp->script, ckp->segwit);
 
-		if (generator_checkaddr(ckp, ckp->donaddress)) {
+		if (generator_checkaddr(ckp, ckp->donaddress, &ckp->donscript, &ckp->donsegwit)) {
 			ckp->donvalid = true;
-			if (script_address(ckp->donaddress)) {
-				sdata->donkeytxnlen = 23;
-				address_to_scripttxn(sdata->donkeytxnbin, ckp->donaddress);
-			} else {
-				sdata->donkeytxnlen = 25;
-				address_to_pubkeytxn(sdata->donkeytxnbin, ckp->donaddress);
-			}
+			sdata->dontxnlen = address_to_txn(sdata->dontxnbin, ckp->donaddress, ckp->donscript, ckp->donsegwit);
 		}
 	}
 
