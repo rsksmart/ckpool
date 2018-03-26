@@ -272,7 +272,8 @@ enum share_err {
 	SE_STALE,
 	SE_NTIME_INVALID,
 	SE_DUPE,
-	SE_HIGH_DIFF
+	SE_HIGH_DIFF,
+	SE_INVALID_VERSION_MASK
 };
 
 static const char __maybe_unused *share_errs[] = {
@@ -290,7 +291,8 @@ static const char __maybe_unused *share_errs[] = {
 	"Stale",
 	"Ntime out of range",
 	"Duplicate",
-	"Above target"
+	"Above target",
+	"Invalid version mask"
 };
 
 #define SHARE_ERR(x) share_errs[((x) + 9)]
