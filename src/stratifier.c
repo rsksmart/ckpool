@@ -6126,8 +6126,7 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	if (!submit_bitcoind)
 		return;
 
-    gbt_block = process_block(wb, coinbase, cblen, data, hash, flip32, blockhash);
-
+	gbt_block = process_block(wb, coinbase, cblen, data, hash, flip32, blockhash);
 	send_node_block(ckp, sdata, client->enonce1, nonce, nonce2, ntime32, version_mask,
 			wb->id, diff, client->id, coinbase, cblen, data);
 
