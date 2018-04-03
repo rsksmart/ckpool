@@ -163,33 +163,6 @@ static bool trigger_rsk_update(ckpool_t *ckp, rdata_t* rdata, char *buf)
 	return notify_flag_update || different_block_hashUpdate;
 }
 
-/*
- * Every "rskpollperiod" invokes on the "main" rskd the getwork command. In some cases (Depending on the getwork result
- * and the pool configuration) notifies the miners
- */
-static void *rootstock_update(void *arg)
-{
-	ckpool_t *ckp = (ckpool_t *)arg;
-	rdata_t *rdata = ckp->rdata;
-	char *buf = NULL;
-
-	pthread_detach(pthread_self());
-	rename_proc("rootstockupdate");
-
-	while (42) {
-		dealloc(buf);
-
-		buf = send_recv_proc(ckp->rootstock, "getwork");
-		if (buf && !cmdmatch(buf, "failed")) {
-			if (trigger_rsk_update(ckp, rdata, buf)) {
-				//LOGWARNING("Rootstock: update %s", buf);
-				send_proc(ckp->stratifier, "rskupdate");
-			}
-		}
-		cksleep_ms(ckp->rskpollperiod);
-	}
-}
-
 /* Use a temporary fd when testing server_alive to avoid races on cs->fd */
 static bool server_alive(ckpool_t *ckp, server_instance_t *si, bool pinging)
 {
@@ -221,7 +194,7 @@ static bool server_alive(ckpool_t *ckp, server_instance_t *si, bool pinging)
 	fd = connect_socket(cs->url, cs->port);
 	if (fd < 0) {
 		if (!pinging)
-			LOGWARNING("Failed to connect socket to %s:%s !", cs->url, cs->port);
+			LOGWARNING("Failed to connect socket to %s:%s!", cs->url, cs->port);
 		return ret;
 	}
 
@@ -246,6 +219,49 @@ out:
 	/* Close the file handle */
 	Close(fd);
 	return ret;
+}
+
+/*
+ * Every "rskpollperiod" invokes on the "main" rskd the getwork command. In some cases (Depending on the getwork result
+ * and the pool configuration) notifies the miners
+ */
+static void *rootstock_update(void *arg)
+{
+	server_instance_t *si = NULL;
+	ckpool_t *ckp = (ckpool_t *)arg;
+	rdata_t *rdata = ckp->rdata;
+	char *buf = NULL;
+	bool alive = false;
+	int i;
+
+	pthread_detach(pthread_self());
+	rename_proc("rootstockupdate");
+
+	while (42) {
+		dealloc(buf);
+
+		// check if any of rskd is alive. if not, do not even try to ask for work.
+		alive = false;
+		for (i = 0; i < ckp->rskds; i++) {
+			server_instance_t *si = ckp->rskdservers[i];
+			if (server_alive(ckp, si, false)) {
+				alive = true;
+				break;
+			}
+		}
+
+		if (alive) {
+			buf = send_recv_proc(ckp->rootstock, "getwork");
+			if (buf && !cmdmatch(buf, "failed")) {
+				if (trigger_rsk_update(ckp, rdata, buf)) {
+					//LOGWARNING("Rootstock: update %s", buf);
+					send_proc(ckp->stratifier, "rskupdate");
+				}
+			}
+		}
+
+		cksleep_ms(ckp->rskpollperiod);
+	}
 }
 
 /* Find the highest priority server alive and return it */
