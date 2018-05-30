@@ -1212,10 +1212,19 @@ static void close_proxy_socket(proxy_instance_t *proxy, proxy_instance_t *subpro
 	}
 }
 
+/* Set the disabled bool and close the socket */
+static void set_proxy_disabled(proxy_instance_t *proxy)
+{
+	proxy->disabled = true;
+	close_proxy_socket(proxy->parent, proxy);
+}
+
 /* Remove the subproxy from the proxi list and put it on the dead list.
  * Further use of the subproxy pointer may point to a new proxy but will not
  * dereference. This will only disable subproxies so parent proxies need to
- * have their disabled bool set manually. */
+ * have their disabled bool set manually. This should only be called from the
+ * receiving threads *proxy_recv to avoid a race on the proxy or connsock data.
+ */
 static void disable_subproxy(gdata_t *gdata, proxy_instance_t *proxi, proxy_instance_t *subproxy)
 {
 	subproxy->alive = false;
@@ -1290,7 +1299,7 @@ static bool parse_reconnect(proxy_instance_t *proxy, json_t *val)
 
 	ret = true;
 	parent = proxy->parent;
-	disable_subproxy(gdata, parent, proxy);
+	set_proxy_disabled(proxy);
 	if (parent != proxy) {
 		/* If this is a subproxy we only need to create a new one if
 		 * the url has changed. Otherwise automated recruiting will
@@ -1655,7 +1664,7 @@ static void drop_proxy(gdata_t *gdata, const char *buf)
 		return;
 	}
 	LOGNOTICE("Generator asked to drop proxy %d:%d", id, subid);
-	disable_subproxy(gdata, proxy, subproxy);
+	set_proxy_disabled(subproxy);
 }
 
 static void stratifier_reconnect_client(ckpool_t *ckp, const int64_t id)
@@ -1863,7 +1872,7 @@ struct cs_msg {
 
 /* Sends all messages in the queue ready to be dispatched, leaving those that
  * would block to be handled next pass */
-static void send_json_msgq(gdata_t *gdata, cs_msg_t **csmsgq)
+static void send_json_msgq(cs_msg_t **csmsgq)
 {
 	cs_msg_t *csmsg, *tmp;
 	int ret;
@@ -1893,7 +1902,7 @@ static void send_json_msgq(gdata_t *gdata, cs_msg_t **csmsgq)
 				csmsg->len = 0;
 				LOGNOTICE("Proxy %d:%d %s failed to send msg in send_json_msgq, dropping",
 					  proxy->id, proxy->subid, proxy->url);
-				disable_subproxy(gdata, proxy->parent, proxy);
+				set_proxy_disabled(proxy);
 			}
 			csmsg->ofs += ret;
 			csmsg->len -= ret;
@@ -1964,7 +1973,7 @@ static void *proxy_send(void *arg)
 		mutex_unlock(&gdata->psend_lock);
 
 		if (!msg) {
-			send_json_msgq(gdata, &csmsgq);
+			send_json_msgq(&csmsgq);
 			continue;
 		}
 
@@ -2028,7 +2037,7 @@ static void *proxy_send(void *arg)
 				"method", "mining.submit");
 		}
 		add_json_msgq(&csmsgq, subproxy, &val);
-		send_json_msgq(gdata, &csmsgq);
+		send_json_msgq(&csmsgq);
 	}
 	return NULL;
 }
@@ -2572,12 +2581,12 @@ static void *proxy_recv(void *arg)
 					  subproxy->id, subproxy->subid, cs->buf);
 			}
 		}
-
-		/* Process hangup only after parsing messages */
-		if (hup)
-			disable_subproxy(gdata, proxi, subproxy);
 		if (cs)
 			cksem_post(&cs->sem);
+
+		/* Process hangup only after parsing messages */
+		if (hup || subproxy->disabled)
+			disable_subproxy(gdata, proxi, subproxy);
 	}
 
 	return NULL;
@@ -2700,10 +2709,8 @@ static void *userproxy_recv(void *arg)
 			cksem_post(&cs->sem);
 		}
 
-		if (hup) {
+		if (hup || proxy->disabled)
 			disable_subproxy(gdata, proxy->parent, proxy);
-			continue;
-		}
 	}
 	return NULL;
 }
@@ -3028,8 +3035,7 @@ static void parse_ableproxy(gdata_t *gdata, const int sockd, const char *buf, bo
 	}
 	if (disable) {
 		/* Set disabled bool here in case this is a parent proxy */
-		proxy->disabled = true;
-		disable_subproxy(gdata, proxy, proxy);
+		set_proxy_disabled(proxy);
 	} else
 		reconnect_proxy(proxy);
 out:
