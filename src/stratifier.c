@@ -584,14 +584,14 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 
     /* Merged mining coinbase */
     if (ckp->emcds) {
-        /* Merged mining magic (4) + AuxPOW hash (32) + merkle_size (4) + merkle_nonce (1) */
-	    memcpy(wb->coinb1bin, "\xfa\xbe\x6d\x6d", 4);
+        // Merged mining magic (4) + AuxPOW hash (32) + merkle_size (4) + merkle_nonce (1)
+	    memcpy(wb->coinb1bin + ofs, "\xfa\xbe\x6d\x6d", 4);
         ofs += 4;
-        memcpy(wb->coinb1bin, wb->emc_hashmergebin, 32);
+        memcpy(wb->coinb1bin + ofs, wb->emc_hashmergebin, 32);
         ofs += 32;
-        memcpy(wb->coinb1bin, "\x00\x00\x00\x00", 4);
+        memcpy(wb->coinb1bin + ofs, "\x00\x00\x00\x00", 4);
         ofs += 4;
-        memcpy(wb->coinb1bin, "\x00", 1);
+        memcpy(wb->coinb1bin + ofs, "\x00", 1);
         ofs += 1;
     }
 
@@ -6251,9 +6251,10 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	/* Submit anything over 99.9% of the diff in case of rounding errors */
 	submit_bitcoind = !(diff < sdata->current_workbase->network_diff * 0.999);
 
-	LOGINFO("ROOTSTOCK: solution: %s, %s, %s, %s", wb->idstring, nonce,
+	LOGINFO("ROOTSTOCK: solution: %s, %s, %s, %s, %s", wb->idstring, nonce,
 		(submit_bitcoind ? "BTC" : "--"),
-		(submit_rskd ? "RSK" : "--"));
+		(submit_rskd ? "RSK" : "--"),
+        (submit_emcd ? "EMC" : "--"));
 
 	if (!submit_bitcoind && !submit_rskd && !submit_emcd)
 		return;
