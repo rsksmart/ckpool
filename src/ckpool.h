@@ -183,6 +183,7 @@ struct ckpool_instance {
 
 	proc_instance_t generator;
 	proc_instance_t rootstock;
+	proc_instance_t emercoin;
 	proc_instance_t stratifier;
 	proc_instance_t connector;
 
@@ -261,6 +262,14 @@ struct ckpool_instance {
 	int rskpollperiod;
 	int rsknotifypolicy;
 
+	/* Emercoin data */
+	int emcds;
+	server_instance_t **emcdservers;
+	char **emcdurl;
+	char **emcdauth;
+	char **emcdpass;
+    int emcpollperiod;
+	
 	/* Stratum options */
 	server_instance_t **servers;
 	char **serverurl; // Array of URLs to bind our server/proxy to
@@ -287,6 +296,7 @@ struct ckpool_instance {
 	/* Private data for each process */
 	void *gdata;
 	void *rdata;
+	void *emcdata;
 	void *sdata;
 	void *cdata;
 

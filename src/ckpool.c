@@ -30,6 +30,7 @@
 #include "libckpool.h"
 #include "generator.h"
 #include "rootstock.h"
+#include "emercoin.h"
 #include "stratifier.h"
 #include "connector.h"
 
@@ -1344,6 +1345,23 @@ static void parse_rskds(ckpool_t *ckp, const json_t *arr_val, const int arr_size
 	}
 }
 
+static void parse_emcds(ckpool_t *ckp, const json_t *arr_val, const int arr_size)
+{
+	json_t *val;
+	int i;
+
+	ckp->emcds = arr_size;
+	ckp->emcdurl = ckzalloc(sizeof(char *) * arr_size);
+	ckp->emcdauth = ckzalloc(sizeof(char *) * arr_size);
+	ckp->emcdpass = ckzalloc(sizeof(char *) * arr_size);
+	for (i = 0; i < arr_size; i++) {
+		val = json_array_get(arr_val, i);
+		json_get_string(&ckp->emcdurl[i], val, "url");
+		json_get_string(&ckp->emcdauth[i], val, "auth");
+		json_get_string(&ckp->emcdpass[i], val, "pass");
+	}
+}
+
 static void parse_proxies(ckpool_t *ckp, const json_t *arr_val, const int arr_size)
 {
 	json_t *val;
@@ -1513,6 +1531,12 @@ static void parse_config(ckpool_t *ckp)
 		if (arr_size)
 			parse_rskds(ckp, arr_val, arr_size);
 	}
+    arr_val = json_object_get(json_conf, "emcd");
+	if (arr_val && json_is_array(arr_val)) {
+		arr_size = json_array_size(arr_val);
+		if (arr_size)
+			parse_emcds(ckp, arr_val, arr_size);
+	}
 	json_get_string(&ckp->btcaddress, json_conf, "btcaddress");
 	json_get_string(&ckp->btcsig, json_conf, "btcsig");
 	if (ckp->btcsig && strlen(ckp->btcsig) > 38) {
@@ -1559,6 +1583,8 @@ static void parse_config(ckpool_t *ckp)
 
 	json_get_int(&ckp->rskpollperiod, json_conf, "rskpollperiod");
 	json_get_int(&ckp->rsknotifypolicy, json_conf, "rsknotifypolicy");
+
+	json_get_int(&ckp->emcpollperiod, json_conf, "emcpollperiod");
 
 	json_decref(json_conf);
 }
@@ -1932,6 +1958,8 @@ int main(int argc, char **argv)
 		quit(0, "No redirect entries found in config file %s", ckp.config);
 	if (!ckp.rskpollperiod)
 		ckp.rskpollperiod = ckp.blockpoll;
+    if (!ckp.emcpollperiod)
+        ckp.emcpollperiod = ckp.blockpoll;
 
 	/* Create the log directory */
 	trail_slash(&ckp.logdir);
@@ -2046,6 +2074,8 @@ int main(int argc, char **argv)
 	prepare_child(&ckp, &ckp.generator, generator, "generator");
 	if (ckp.rskds)
 		prepare_child(&ckp, &ckp.rootstock, rootstock, "rootstock");
+    if (ckp.emcds)
+		prepare_child(&ckp, &ckp.emercoin, emercoin, "emercoin");
 	prepare_child(&ckp, &ckp.stratifier, stratifier, "stratifier");
 	prepare_child(&ckp, &ckp.connector, connector, "connector");
 

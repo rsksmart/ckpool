@@ -30,6 +30,7 @@
 #include "connector.h"
 #include "generator.h"
 #include "rootstock.h"
+#include "emercoin.h"
 
 #include "rsktestconfig.h"
 
@@ -504,6 +505,7 @@ struct json_entry {
 #define GEN_NORMAL 1
 #define GEN_PRIORITY 2
 #define RSK_PRIORITY 3
+#define EMC_PRIORITY 4
 
 /* For storing a set of messages within another lock, allowing us to dump them
  * to the log outside of lock */
@@ -579,6 +581,19 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 	/* Followed by our unique randomiser based on the nsec timestamp */
 	len = ser_number(wb->coinb1bin + ofs, now.tv_nsec);
 	ofs += len;
+
+    /* Merged mining coinbase */
+    if (ckp->emcds) {
+        /* Merged mining magic (4) + AuxPOW hash (32) + merkle_size (4) + merkle_nonce (1) */
+	    memcpy(wb->coinb1bin, "\xfa\xbe\x6d\x6d", 4);
+        ofs += 4;
+        memcpy(wb->coinb1bin, wb->emc_hashmergebin, 32);
+        ofs += 32;
+        memcpy(wb->coinb1bin, "\x00\x00\x00\x00", 4);
+        ofs += 4;
+        memcpy(wb->coinb1bin, "\x00", 1);
+        ofs += 1;
+    }
 
 	wb->enonce1varlen = ckp->nonce1length;
 	wb->enonce2varlen = ckp->nonce2length;
@@ -1457,8 +1472,10 @@ static void block_update(ckpool_t *ckp, int *prio)
 	json_t *val, *txn_array, *rules_array;
 	sdata_t *sdata = ckp->sdata;
 	rdata_t *rdata = ckp->rdata;
+    emcdata_t *emcdata = ckp->emcdata;
 	bool new_block = false;
 	bool new_rootstock = false;
+    bool new_emercoin = false;
 	int i, retries = 0;
 	bool ret = false;
 	txntable_t *txns;
@@ -1470,7 +1487,7 @@ static void block_update(ckpool_t *ckp, int *prio)
 
 retry:
 	executed_gbt = false;
-	if (*prio != RSK_PRIORITY || !ckp->gbtresultcache) {
+	if ((*prio != RSK_PRIORITY && *prio != EMC_PRIORITY) || !ckp->gbtresultcache) {
 		executed_gbt = true;
 		tv_time(&start_tv);
 		wb = generator_getbase(ckp);
@@ -1551,6 +1568,27 @@ retry:
 		}
 	}
 
+    if (ckp->emcds) {
+        memcpy(wb->emc_hashmergebin, emcdata->hashmergebin, 32);
+
+        if (emcdata->target[0] != 0) {
+            char hash_swap[32], tmp[32];
+            char target[65];
+
+            strncpy(target, emcdata->target, 65);
+            hex2bin(hash_swap, target, 32);
+            bswap_256(tmp, hash_swap);
+            double emc_diff = diff_from_target((uchar *)tmp);
+            wb->emc_diff = emc_diff;
+        }
+
+        if (strncmp(emcdata->hashmerge, emcdata->lasthashmerge, 64)) {
+            new_emercoin = true;
+
+            strcpy(emcdata->lasthashmerge, emcdata->hashmerge);
+        }
+    }
+
 	generate_coinbase(ckp, wb);
 
 	add_base(ckp, sdata, wb, &new_block);
@@ -1579,7 +1617,7 @@ retry:
 		LOGINFO("ROOTSTOCK: getwork: 0001-01-01 00:00:00.000, 0001-01-01 00:00:00.000, %s", wb->idstring);
 	}
 
-	stratum_broadcast_update(sdata, wb, new_block || new_rootstock);
+	stratum_broadcast_update(sdata, wb, new_block || new_rootstock || new_emercoin);
 	ret = true;
 	LOGINFO("Broadcast updated stratum base");
 	/* Update transactions after stratum broadcast to not delay
@@ -2221,6 +2259,111 @@ static void rsk_bitcoin_solution_submit(ckpool_t *ckp, char *solution)
 	}
 
     free(solution);
+}
+
+static char* process_block_for_emc(const workbase_t *wb, const char *coinbase, const int cblen,
+              const uchar *data, const uchar *hash, uchar *flip32, char *blockhash) 
+{
+    char blockheader[BLOCK_HEADER_SIZE * 2 + 1];
+    char coinbase_hex[1024];
+    uchar cb_hash[HASH_SIZE];
+    char cb_hash_hex[HASH_SIZE * 2 + 1];
+    char *merkle_hash = NULL, merkle_hashes_len;
+    char *auxpow_hex, *p;
+    char *message;
+    size_t cbmerklebranchlen, blkchainmerklebranchlen, auxpow_hexlen;
+
+    // Blockhash
+    flip_32(flip32, hash);
+    __bin2hex(blockhash, flip32, HASH_SIZE);
+
+    // Data is blockheader
+    __bin2hex(blockheader, data, BLOCK_HEADER_SIZE);
+
+    // Coinbase
+    __bin2hex(coinbase_hex, coinbase, cblen);
+
+    cbmerklebranchlen = 2 + wb->merkles * HASH_SIZE * 2 + 4 * 2;
+    blkchainmerklebranchlen = 2 + 0 * 2 + 4 * 2; 
+    auxpow_hexlen = cblen * 2 + HASH_SIZE * 2 + cbmerklebranchlen + blkchainmerklebranchlen + BLOCK_HEADER_SIZE * 2 + 1;
+    
+    auxpow_hex = ckalloc(auxpow_hexlen);
+    p = auxpow_hex;
+
+    // Coinbase
+    memcpy(p, coinbase_hex, cblen * 2);
+    p += cblen * 2;
+    
+    // Block hash
+    memcpy(p, blockhash, HASH_SIZE * 2);
+    p += HASH_SIZE * 2;
+
+    // CB merkle branch
+    {
+        // CB Merkle branch length
+        // TODO: check if safe (taking 1 byte from 2 byte int). Maybe take less significant (m & 0xFF)?
+        short branchlen = wb->merkles & 0xFF;
+        __bin2hex(merkle_hashes_len, &branchlen, 1);
+        memcpy(p, merkle_hashes_len, 2);
+        p += 2;
+
+        // CB Merkle branch hashes
+        for (int i = 0; i < wb->merkles; i++) {
+            memcpy(p, &wb->merklehash[i], HASH_SIZE * 2);
+            p += HASH_SIZE * 2;
+        }
+
+        // CB Merkle branch side mask
+        for (int i = 0; i < 8; i++) {
+            *p = '0';
+            p++;
+        }
+    }
+
+    // Aux blockchain branch
+    { 
+        // First 2 for branch length, last 8 for side mask
+        for (int i = 0; i < 10; i++) {
+            *p = '0';
+            p++;
+        }
+    }
+
+    // Parent block
+    memcpy(p, blockheader, BLOCK_HEADER_SIZE * 2);
+    p++;
+
+    *p = '\0';
+
+    ASPRINTF(&message, "emcsubmitblock:%s", auxpow_hex);
+
+    dealloc(auxpow_hex);
+
+    return message;
+}
+
+static void emc_bitcoin_solution_submit(ckpool_t *ckp, char *solution) {
+    static volatile time_t emc_submit;
+    static volatile int emc_submit_count;
+    const int max_submits_per_window = 2;
+    const int window_size_seconds = 3;
+    time_t now;
+    time(&now);
+    if (now - emc_submit >= window_size_seconds) {
+        emc_submit = now;
+        emc_submit_count = 0;
+    }
+    
+    if (ckp->emcds && ++emc_submit_count < max_submits_per_window) {
+        int objects;
+        unix_msg_t *umsg;
+        const int max_umsg_queue_size = 30;
+        DL_COUNT(ckp->emercoin.unix_msgs, umsg, objects);
+        LOGINFO("EMERCOIN: unix msq queue size %d", objects);
+        if (objects < max_umsg_queue_size) {
+            send_proc(ckp->emercoin, solution);
+        }
+    }
 }
 
 /* Submit block data locally, absorbing and freeing gbt_block */
@@ -4774,6 +4917,8 @@ retry:
 		update_base(sdata, GEN_PRIORITY);
 	} else if (cmdmatch(buf, "rskupdate")) {
 		update_base(sdata, RSK_PRIORITY);
+    } else if (cmdmatch(buf, "emcupdate")) {
+        update_base(sdata, EMC_PRIORITY);
 	} else if (cmdmatch(buf, "subscribe")) {
 		/* Proxifier has a new subscription */
 		update_subscribe(ckp, buf);
@@ -6081,7 +6226,7 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 		const char *nonce2, const char *nonce, const uint32_t ntime32, const uint32_t version_mask,
 		const bool stale)
 {
-	char blockhash[68], cdfield[64], *gbt_block, *bitcoin_solution_for_rsk;
+	char blockhash[68], cdfield[64], *gbt_block, *bitcoin_solution_for_rsk, *bitcoin_solution_for_emc;
 	sdata_t *sdata = client->sdata;
 	json_t *val = NULL, *val_copy;
 	ckpool_t *ckp = wb->ckp;
@@ -6090,6 +6235,7 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	bool ret;
 	bool submit_bitcoind = false;
 	bool submit_rskd = false;
+    bool submit_emcd = false;
 
 	if(DEV_MODE_ON){
 		sdata->current_workbase->rsk_diff = RSK_CKPOOL_DIFF;
@@ -6099,6 +6245,9 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	/* Rootstock difficulty */
 	submit_rskd = !(diff < sdata->current_workbase->rsk_diff * 0.999);
 
+    /* Emercoin difficulty */
+    submit_emcd = !(diff < sdata->current_workbase->emc_diff * 0.999);
+
 	/* Submit anything over 99.9% of the diff in case of rounding errors */
 	submit_bitcoind = !(diff < sdata->current_workbase->network_diff * 0.999);
 
@@ -6106,7 +6255,7 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 		(submit_bitcoind ? "BTC" : "--"),
 		(submit_rskd ? "RSK" : "--"));
 
-	if (!submit_bitcoind && !submit_rskd)
+	if (!submit_bitcoind && !submit_rskd && !submit_emcd)
 		return;
 
 	LOGWARNING("Possible %sblock solve diff %lf !", stale ? "stale share " : "", diff);
@@ -6122,6 +6271,12 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
         rsk_bitcoin_solution_submit(ckp, bitcoin_solution_for_rsk);
 		LOGINFO("ROOTSTOCK: blocksolve: %s, %s, %s, %s", wb->idstring, nonce, nonce2, blockhash);
 	}
+
+    if (submit_emcd) {
+        bitcoin_solution_for_emc = process_block_for_emc(wb, coinbase, cblen, data, hash, flip32, blockhash);
+        emc_bitcoin_solution_submit(ckp, bitcoin_solution_for_emc);
+        LOGINFO("EMERCOIN: blocksolve %s, %s, %s, %s", wb->idstring, nonce, nonce2, blockhash);
+    }
 
 	if (!submit_bitcoind)
 		return;

@@ -78,9 +78,13 @@ struct genwork {
 
 	char *logdir;
 
-  /* Rootstock */
-  double rsk_diff;
-  char rsk_blockheaderbin[32];
+    /* Rootstock */
+    double rsk_diff;
+    char rsk_blockheaderbin[32];
+
+    /* Emercoin */
+    double emc_diff;
+    char emc_hashmergebin[32];
 
 	ckpool_t *ckp;
 	bool proxy; /* This workbase is proxied work */
