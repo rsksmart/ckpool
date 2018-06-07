@@ -2283,7 +2283,7 @@ static char* process_block_for_emc(const workbase_t *wb, const char *coinbase, c
     // Coinbase
     __bin2hex(coinbase_hex, coinbase, cblen);
 
-    cbmerklebranchlen = 2 + wb->merkles * HASH_SIZE * 2 + 4 * 2;
+    cbmerklebranchlen = 2 + (1 + wb->merkles) * HASH_SIZE * 2 + 4 * 2; // wb->merkles doesn't count the coinbase
     blkchainmerklebranchlen = 2 + 0 * 2 + 4 * 2; 
     auxpow_hexlen = cblen * 2 + HASH_SIZE * 2 + cbmerklebranchlen + blkchainmerklebranchlen + BLOCK_HEADER_SIZE * 2 + 1;
     
@@ -2303,12 +2303,17 @@ static char* process_block_for_emc(const workbase_t *wb, const char *coinbase, c
         // CB Merkle branch length
         // TODO: check if safe (taking 1 byte from 2 byte int). Maybe take less significant (m & 0xFF)?
         //       Rewrite to make it simpler
-        short branchlen = wb->merkles & 0xFF;
+        short branchlen = (1 + wb->merkles) & 0xFF; // wb->merkles doesn't count the coinbase
         merkle_hashes_len_hex = ckalloc(2);
         __bin2hex(merkle_hashes_len_hex, &branchlen, 1);
         memcpy(p, merkle_hashes_len_hex, 2);
         dealloc(merkle_hashes_len_hex);
         p += 2;
+
+        gen_hash((uchar *)coinbase, cb_hash, cblen);
+        __bin2hex(cb_hash_hex, cb_hash, HASH_SIZE);
+        memcpy(p, cb_hash_hex, HASH_SIZE * 2);
+        p += HASH_SIZE * 2;
 
         // CB Merkle branch hashes
         for (int i = 0; i < wb->merkles; i++) {
