@@ -2317,24 +2317,22 @@ static char* process_block_for_emc(const workbase_t *wb, const char *coinbase, c
         }
 
         // CB Merkle branch side mask
-        for (int i = 0; i < 8; i++) {
-            *p = '0';
-            p++;
-        }
+	    memcpy(p, "00000000", 8);
+        p += 8;
     }
 
     // Aux blockchain branch
     { 
         // First 2 for branch length, last 8 for side mask
-        for (int i = 0; i < 10; i++) {
-            *p = '0';
-            p++;
-        }
+	    memcpy(p, "00", 2);
+        p += 2;
+        memcpy(p, "00000000", 8);
+        p += 8;
     }
 
     // Parent block
     memcpy(p, blockheader, BLOCK_HEADER_SIZE * 2);
-    p++;
+    p += BLOCK_HEADER_SIZE * 2;
 
     *p = '\0';
 
