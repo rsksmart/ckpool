@@ -6242,6 +6242,7 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 
 	if(DEV_MODE_ON){
 		sdata->current_workbase->rsk_diff = RSK_CKPOOL_DIFF;
+        sdata->current_workbase->emc_diff = EMC_CKPOOL_DIFF;
 		sdata->current_workbase->network_diff = BTC_CKPOOL_DIFF;
 	}
 

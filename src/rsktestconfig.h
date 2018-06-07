@@ -8,6 +8,7 @@
 #define MINER_DIFF	0.005
 /* Difficulty value that will be used in block submission to RSK or BTC */
 #define RSK_CKPOOL_DIFF 0.0
+#define EMC_CKPOOL_DIFF 0.05
 #define BTC_CKPOOL_DIFF 0.1
 
 #define PERF_TEST_MODE_ON false
