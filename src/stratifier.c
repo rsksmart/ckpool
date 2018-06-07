@@ -2338,7 +2338,7 @@ static char* process_block_for_emc(const workbase_t *wb, const char *coinbase, c
 
     *p = '\0';
 
-    ASPRINTF(&message, "emcsubmitblock:%s", auxpow_hex);
+    ASPRINTF(&message, "emcsubmitauxblock:%s", auxpow_hex);
 
     dealloc(auxpow_hex);
 

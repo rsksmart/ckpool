@@ -70,9 +70,9 @@ out:
 }
 
 
-static const char* emc_submitblock_req = "{\"jsonrpc\": \"2.0\", \"method\": \"submitblock\", \"params\": [\"%s\"], \"id\": %d}\n";
+static const char* emc_submitauxblock_req = "{\"jsonrpc\": \"2.0\", \"method\": \"getauxblock\", \"params\": [\"%s\", \"%s\"], \"id\": %d}\n";
 
-static void emc_submitblock(connsock_t *cs, char *blockhex)
+static void emc_submitauxblock(connsock_t *cs, char *blockhex)
 {
     ckpool_t *ckp = cs->ckp;
     emcdata_t *emcdata = ckp->emcdata;
@@ -83,12 +83,12 @@ static void emc_submitblock(connsock_t *cs, char *blockhex)
 
 retry:
     id = ++emcdata->lastreqid;
-    ASPRINTF(&rpc_req, emc_submitblock_req, blockhex, id);
+    ASPRINTF(&rpc_req, emc_submitauxblock_req, emcdata->hashmerge, blockhex, id);
     val = json_rpc_call_timeout(cs, rpc_req, 3);
     dealloc(rpc_req);
 
     if (!val) {
-        LOGWARNING("%s:%s Failed to get valid json response to emercoin submitblock", cs->url, cs->port);
+        LOGWARNING("%s:%s Failed to get valid json response to emercoin getauxblock submission", cs->url, cs->port);
         if (++retries < 1) {
             Close(cs->fd);
             goto retry;
@@ -102,7 +102,7 @@ retry:
         // result not valid, check for error
         res_val = json_object_get(val, "error");
         if (!res_val) {
-            LOGWARNING("Json response to emc submitblock format is unknown and can't be parsed");
+            LOGWARNING("Json response to emc getauxblock submission format is unknown and can't be parsed");
             if (++retries < 1) {
                 json_decref(val);
                 goto retry;
@@ -111,7 +111,7 @@ retry:
         }
         const int error_code = json_integer_value(json_object_get(res_val, "code"));
         const char *error_message = json_string_value(json_object_get(res_val, "message"));
-        LOGWARNING("Error on emc submitblock. Code: %d Message: %s.", error_code, error_message);
+        LOGWARNING("Error on emc getauxblock submission. Code: %d Message: %s.", error_code, error_message);
     }
 
     if (!json_is_null(res_val)) {
@@ -306,7 +306,7 @@ static void clear_unix_msg(unix_msg_t **umsg)
 
 /**
  * Iterates forever looking for task reading a buffer of messages. 
- * If we get a "getauxblock" or "submitblock" msg we send that to the "main" emcd
+ * If we get a "getauxblock" or "submitauxblock" msg we send that to the "main" emcd
  */
 static void emercoin_loop(proc_instance_t *pi)
 {
@@ -373,9 +373,9 @@ retry:
 
 			send_unix_msg(umsg->sockd, emcdata->hashmerge);
 		}
-    } else if (cmdmatch(buf, "emcsubmitblock")) {
+    } else if (cmdmatch(buf, "emcsubmitauxblock")) {
       
-        const size_t tag_size = 15; // size of "emcsubmitblock:"
+        const size_t tag_size = 18; // size of "emcsubmitauxblock:"
         const char *blockhex = buf + tag_size;
 
         tv_t start_tv;
@@ -384,7 +384,7 @@ retry:
         LOGINFO("Submitting emercoin solution data");
 
         tv_time(&start_tv);
-        emc_submitblock(cs, blockhex);
+        emc_submitauxblock(cs, blockhex);
         tv_time(&finish_tv);
 
         {
@@ -395,7 +395,7 @@ retry:
             localtime_r(&(start_tv.tv_sec), &start_tm);
             localtime_r(&(finish_tv.tv_sec), &finish_tm);
             //memset(buf + submit_bitcoin_solution_tag_size + HASH_SIZE * 2, 0, 1);
-            LOGINFO("EMERCOIN: emcsubmitblock: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
+            LOGINFO("EMERCOIN: emcsubmitauxblock: %d-%02d-%02d %02d:%02d:%02d.%03d, %d-%02d-%02d %02d:%02d:%02d.%03d, %s",
                     start_tm.tm_year + 1900, start_tm.tm_mon + 1, start_tm.tm_mday,
                     start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, start_ms,
                     finish_tm.tm_year + 1900, finish_tm.tm_mon + 1, finish_tm.tm_mday,
