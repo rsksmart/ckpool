@@ -112,12 +112,9 @@ retry:
         const int error_code = json_integer_value(json_object_get(res_val, "code"));
         const char *error_message = json_string_value(json_object_get(res_val, "message"));
         LOGWARNING("Error on emc getauxblock submission. Code: %d Message: %s.", error_code, error_message);
+        goto out;
     }
-
-    if (!json_is_null(res_val)) {
-        // TODO: verify result json values and log
-    }
-    
+	LOGWARNING("Emercoin block accepted!");
 out:
     json_decref(val);
     
