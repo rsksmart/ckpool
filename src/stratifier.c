@@ -1577,8 +1577,7 @@ retry:
 
             strncpy(target, emcdata->target, 65);
             hex2bin(hash_swap, target, 32);
-            bswap_256(tmp, hash_swap);
-            double emc_diff = diff_from_target((uchar *)tmp);
+            double emc_diff = diff_from_target((uchar *)hash_swap);
             wb->emc_diff = emc_diff;
         }
 
