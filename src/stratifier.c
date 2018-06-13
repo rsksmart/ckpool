@@ -2300,11 +2300,8 @@ static char* process_block_for_emc(const workbase_t *wb, const char *coinbase, c
     // CB merkle branch
     {
         // CB Merkle branch length
-        // TODO: check if safe (taking 1 byte from 2 byte int). Maybe take less significant (m & 0xFF)?
-        //       Rewrite to make it simpler
-        short branchlen = wb->merkles & 0xFF;
         merkle_hashes_len_hex = ckalloc(2);
-        __bin2hex(merkle_hashes_len_hex, &branchlen, 1);
+        __bin2hex(merkle_hashes_len_hex, &wb->merkles, 1); // 1 byte is more than enough for the merkle size
         memcpy(p, merkle_hashes_len_hex, 2);
         dealloc(merkle_hashes_len_hex);
         p += 2;
