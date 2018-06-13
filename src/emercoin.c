@@ -335,7 +335,7 @@ reconnect:
 	}
 	if (unlikely(!started)) {
 		started = true;
-		LOGWARNING("%s rootstock ready", ckp->name);
+		LOGWARNING("%s emercoin ready", ckp->name);
 	}
 
 	auxblock = si->data;
