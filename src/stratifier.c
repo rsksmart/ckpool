@@ -551,7 +551,6 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 	char header[228];
 	int len, ofs = 0;
 	ts_t now;
-    int32_t merkle_tree_entries = 1 + wb->txns; // coinbase + txs
 
 	/* Set fixed length coinb1 arrays to be more than enough */
 	wb->coinb1 = ckzalloc(256);
@@ -590,7 +589,7 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
         ofs += 4;
         memcpy(wb->coinb1bin + ofs, wb->emc_hashmergebin, 32);
         ofs += 32;
-        memcpy(wb->coinb1bin + ofs, &merkle_tree_entries, 4);
+        memcpy(wb->coinb1bin + ofs, "\x01\x00\x00\x00", 4);
         ofs += 4;
         memcpy(wb->coinb1bin + ofs, "\x00\x00\x00\x00", 4);
         ofs += 4;
