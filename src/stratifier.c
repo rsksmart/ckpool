@@ -35,6 +35,7 @@
 #include "rsktestconfig.h"
 
 #define HASH_SIZE 32
+#define HEX_HASH_SIZE 64
 #define BLOCK_HEADER_SIZE 80
 
 /* Consistent across all pool instances */
@@ -1574,20 +1575,20 @@ retry:
 	}
 
     if (ckp->emcds) {
-        memcpy(wb->emc_hashmergebin, emcdata->hashmergebin, 32);
+        memcpy(wb->emc_hashmergebin, emcdata->hashmergebin, sizeof(wb->emc_hashmergebin));
 
-        if (emcdata->target[0] != 0) {
-            char hash_swap[32], tmp[32];
-            char target[65];
+        if (emcdata->target[0] != '\0') {
+            char hash_swap[HASH_SIZE], tmp[HASH_SIZE];
+            char target[HEX_HASH_SIZE + 1];
 
-            strncpy(target, emcdata->target, 65);
-            hex2bin(hash_swap, target, 32);
+            strncpy(target, emcdata->target, sizeof(target));
+            hex2bin(hash_swap, target, sizeof(hash_swap));
             double emc_diff = diff_from_target((uchar *)hash_swap);
             wb->emc_diff = emc_diff;
         }
 
-        if (strncmp(emcdata->hashmerge, emcdata->lasthashmerge, 64)) {
-            strcpy(emcdata->lasthashmerge, emcdata->hashmerge);
+        if (strncmp(emcdata->hashmerge, emcdata->lasthashmerge, sizeof(emcdata->lasthashmerge) - 1)) {
+            strncpy(emcdata->lasthashmerge, emcdata->hashmerge, sizeof(emcdata->lasthashmerge));
         }
     }
 

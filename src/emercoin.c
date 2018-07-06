@@ -18,7 +18,7 @@ bool emc_getauxblock(connsock_t *cs, emc_auxblock_t *auxblock)
 	char *rpc_req;
 	const char* hashmerge;
 	const char* target;
-    char hashmergebin[36];
+	char hashmergebin[BIN_HASH_SIZE];
 	int chainid = 0;
 	int id;
 
@@ -359,9 +359,9 @@ retry:
 			send_unix_msg(umsg->sockd, "failed");
 			goto reconnect;
 		} else {
-			memcpy(emcdata->hashmergebin, auxblock->hashmergebin, 32);
-			strcpy(emcdata->hashmerge, auxblock->hashmerge);
-			strcpy(emcdata->target, auxblock->target);
+			memcpy(emcdata->hashmergebin, auxblock->hashmergebin, sizeof(emcdata->hashmergebin));
+			strncpy(emcdata->hashmerge, auxblock->hashmerge, sizeof(emcdata->hashmerge));
+			strncpy(emcdata->target, auxblock->target, sizeof(emcdata->target));
 			emcdata->chainid = auxblock->chainid;
 
 			send_unix_msg(umsg->sockd, emcdata->hashmerge);
