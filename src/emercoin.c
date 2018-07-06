@@ -7,10 +7,6 @@
 
 #include <limits.h>
 
-#define BIN_HASH_SIZE sizeof(((emc_auxblock_t*)0)->hashmergebin)
-#define HEX_HASH_SIZE sizeof(((emc_auxblock_t*)0)->hashmerge)
-#define HEX_TARGET_SIZE sizeof(((emc_auxblock_t*)0)->target)
-
 static const char *emc_getauxblock_req = "{\"jsonrpc\": \"2.0\", \"method\": \"getauxblock\", \"params\": [], \"id\": %d}\n";
 
 bool emc_getauxblock(connsock_t *cs, emc_auxblock_t *auxblock)
@@ -55,11 +51,11 @@ bool emc_getauxblock(connsock_t *cs, emc_auxblock_t *auxblock)
 
 	chainid = json_integer_value(json_object_get(res_val, "chainid"));
 	
-	strncpy(auxblock->hashmerge, hashmerge, HEX_HASH_SIZE);
+	strncpy(auxblock->hashmerge, hashmerge, STR_HEX_HASH_SIZE);
 	hex2bin(hashmergebin, hashmerge, BIN_HASH_SIZE);
 	memcpy(auxblock->hashmergebin, hashmergebin, BIN_HASH_SIZE);
 
-	strncpy(auxblock->target, target, HEX_TARGET_SIZE);
+	strncpy(auxblock->target, target, STR_HEX_HASH_SIZE);
 
     auxblock->chainid = chainid;
 

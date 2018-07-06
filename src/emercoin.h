@@ -7,6 +7,9 @@
 
 #include "config.h"
 
+#define BIN_HASH_SIZE 32
+#define STR_HEX_HASH_SIZE 65
+
 struct emercoin_data {
     ckpool_t *ckp;
 
@@ -17,23 +20,23 @@ struct emercoin_data {
 	int lastreqid;
 
 	/* Last getauxblock parameters */
-	char hashmergebin[32];
-	char hashmerge[65];
-	char target[65];
+	char hashmergebin[BIN_HASH_SIZE];
+	char hashmerge[STR_HEX_HASH_SIZE];
+	char target[STR_HEX_HASH_SIZE];
 	int chainid;
 
 	/* Last hash being worked on */
-	char lasthashmerge[65];
+	char lasthashmerge[STR_HEX_HASH_SIZE];
 };
 
 typedef struct emercoin_data emcdata_t;
 
 struct emc_auxblock {
-	char hashmergebin[32];
-	char target[65];
+	char hashmergebin[BIN_HASH_SIZE];
+	char target[STR_HEX_HASH_SIZE];
 	int chainid;
 
-	char hashmerge[65];
+	char hashmerge[STR_HEX_HASH_SIZE];
 };
 
 typedef struct emc_auxblock emc_auxblock_t;
