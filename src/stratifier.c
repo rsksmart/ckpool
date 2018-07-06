@@ -1481,7 +1481,6 @@ static void block_update(ckpool_t *ckp, int *prio)
     emcdata_t *emcdata = ckp->emcdata;
 	bool new_block = false;
 	bool new_rootstock = false;
-    bool new_emercoin = false;
 	int i, retries = 0;
 	bool ret = false;
 	txntable_t *txns;
@@ -1588,8 +1587,6 @@ retry:
         }
 
         if (strncmp(emcdata->hashmerge, emcdata->lasthashmerge, 64)) {
-            new_emercoin = true;
-
             strcpy(emcdata->lasthashmerge, emcdata->hashmerge);
         }
     }
@@ -1622,7 +1619,7 @@ retry:
 		LOGINFO("ROOTSTOCK: getwork: 0001-01-01 00:00:00.000, 0001-01-01 00:00:00.000, %s", wb->idstring);
 	}
 
-	stratum_broadcast_update(sdata, wb, new_block || new_rootstock || new_emercoin);
+	stratum_broadcast_update(sdata, wb, new_block || new_rootstock);
 	ret = true;
 	LOGINFO("Broadcast updated stratum base");
 	/* Update transactions after stratum broadcast to not delay
