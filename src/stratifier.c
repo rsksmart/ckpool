@@ -2268,7 +2268,8 @@ static char* process_block_for_emc(const workbase_t *wb, const char *coinbase, c
 {
     char blockheader[BLOCK_HEADER_SIZE * 2 + 1];
     char coinbase_hex[1024];
-    char *merkle_hashes = NULL;
+    char *merkle_hashes = NULL,
+         *merkle_branch_hex;
     char *auxpow_hex;
     char *message;
 
@@ -2293,13 +2294,20 @@ static char* process_block_for_emc(const workbase_t *wb, const char *coinbase, c
         tmp = merkle_hashes;
     }
     
+    // the coinbase merkle branch only requires the right leaf for each comparison, hence the bit mask is all 0
+    ASPRINTF(&merkle_branch_hex, "%02x%s%s", wb->merkles, merkle_hashes == NULL ? "" : merkle_hashes, "00000000");
+    
+    // no merge mining with other blockchains, so the size is 0 (first byte) and the bit mask is all 0 (last 4 bytes)
+    char blockchain_branch_hex[11] = "0000000000";
+
     // auxpow = coinbase in parent_block + parent_block hash + coinbase_branch + blockchain_branch + parent_block
     // Refer to https://en.bitcoin.it/wiki/Merged_mining_specification#Aux_proof-of-work_block
-    ASPRINTF(&auxpow_hex, "%s%s%02x%s%s%s%s%s", coinbase_hex, blockhash, wb->merkles, merkle_hashes == NULL ? "" : merkle_hashes, "00000000", "00", "00000000", blockheader);
+    ASPRINTF(&auxpow_hex, "%s%s%s%s%s", coinbase_hex, blockhash, merkle_branch_hex, blockchain_branch_hex, blockheader);
 
     ASPRINTF(&message, "emcsubmitauxblock:%s", auxpow_hex);
 
     dealloc(auxpow_hex);
+    dealloc(merkle_branch_hex);
 
     return message;
 }
