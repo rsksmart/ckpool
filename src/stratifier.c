@@ -2267,11 +2267,12 @@ static char* process_block_for_emc(const workbase_t *wb, const char *coinbase, c
               const uchar *data, const uchar *hash, uchar *flip32, char *blockhash) 
 {
     char blockheader[BLOCK_HEADER_SIZE * 2 + 1];
-    char coinbase_hex[1024];
-    char *merkle_hashes = NULL,
-         *merkle_branch_hex;
+    char *coinbase_hex;
+    char *merkle_hashes = NULL, *merkle_branch_hex;
     char *auxpow_hex;
     char *message;
+
+    coinbase_hex = ckalloc(cblen * 2 + 1);
 
     // Blockhash
     flip_32(flip32, hash);
@@ -2306,8 +2307,9 @@ static char* process_block_for_emc(const workbase_t *wb, const char *coinbase, c
 
     ASPRINTF(&message, "emcsubmitauxblock:%s", auxpow_hex);
 
-    dealloc(auxpow_hex);
+    dealloc(coinbase_hex);
     dealloc(merkle_branch_hex);
+    dealloc(auxpow_hex);
 
     return message;
 }
