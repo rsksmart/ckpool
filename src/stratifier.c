@@ -584,11 +584,17 @@ static void generate_coinbase(const ckpool_t *ckp, workbase_t *wb)
 
     /* Merged mining coinbase */
     if (ckp->emcds) {
-        // Merged mining magic (4) + AuxPOW hash (32) + merkle_size (4) + merkle_nonce (1)
-	    memcpy(wb->coinb1bin + ofs, "\xfa\xbe\x6d\x6d", 4);
+        // Merged mining magic (4 bytes) + AuxPOW hash (32 bytes) + merkle_size (4 bytes) + merkle_nonce (4 bytes)
+        memcpy(wb->coinb1bin + ofs, "\xfa\xbe\x6d\x6d", 4);
         ofs += 4;
         memcpy(wb->coinb1bin + ofs, wb->emc_hashmergebin, 32);
         ofs += 32;
+
+        // Since the merge mining mechanism for RSK is different (we add an output to the coinbase instead of modifying the input) it is the same
+        // as doing merge mining only with emercoin. Hence we don't need to build the chain merkle branch and can leave it with values 1 for size
+        // and 0 for nonce
+        // Should there be merge mining with another chain these values would be different
+        // Refer to: https://en.bitcoin.it/wiki/Merged_mining_specification#Aux_work_merkle_tree
         memcpy(wb->coinb1bin + ofs, "\x01\x00\x00\x00", 4);
         ofs += 4;
         memcpy(wb->coinb1bin + ofs, "\x00\x00\x00\x00", 4);
