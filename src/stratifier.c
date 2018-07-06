@@ -2268,12 +2268,9 @@ static char* process_block_for_emc(const workbase_t *wb, const char *coinbase, c
 {
     char blockheader[BLOCK_HEADER_SIZE * 2 + 1];
     char coinbase_hex[1024];
-    uchar cb_hash[HASH_SIZE];
-    char cb_hash_hex[HASH_SIZE * 2 + 1];
-    char *merkle_hash = NULL, *merkle_hashes_len_hex;
-    char *auxpow_hex, *p;
+    char *merkle_hashes = NULL;
+    char *auxpow_hex;
     char *message;
-    size_t cbmerklebranchlen, blkchainmerklebranchlen, auxpow_hexlen;
 
     // Blockhash
     flip_32(flip32, hash);
@@ -2285,55 +2282,20 @@ static char* process_block_for_emc(const workbase_t *wb, const char *coinbase, c
     // Coinbase
     __bin2hex(coinbase_hex, coinbase, cblen);
 
-    cbmerklebranchlen = 2 + wb->merkles * HASH_SIZE * 2 + 4 * 2;
-    blkchainmerklebranchlen = 2 + 0 * 2 + 4 * 2; 
-    auxpow_hexlen = cblen * 2 + HASH_SIZE * 2 + cbmerklebranchlen + blkchainmerklebranchlen + BLOCK_HEADER_SIZE * 2 + 1;
-    
-    auxpow_hex = ckalloc(auxpow_hexlen);
-    p = auxpow_hex;
+    char *tmp = NULL;
+    // Prepare hashes from cb's merkle branch
+    for(int i = 0; i < wb->merkles; i++) {
+        ASPRINTF(&merkle_hashes, "%s%s", (tmp == NULL ? "" : tmp), &wb->merklehash[i][0]);
 
-    // Coinbase
-    memcpy(p, coinbase_hex, cblen * 2);
-    p += cblen * 2;
-    
-    // Block hash
-    memcpy(p, blockhash, HASH_SIZE * 2);
-    p += HASH_SIZE * 2;
-
-    // CB merkle branch
-    {
-        // CB Merkle branch length
-        merkle_hashes_len_hex = ckalloc(2);
-        __bin2hex(merkle_hashes_len_hex, &wb->merkles, 1); // 1 byte is more than enough for the merkle size
-        memcpy(p, merkle_hashes_len_hex, 2);
-        dealloc(merkle_hashes_len_hex);
-        p += 2;
-
-        // CB Merkle branch hashes
-        for (int i = 0; i < wb->merkles; i++) {
-            memcpy(p, &wb->merklehash[i], HASH_SIZE * 2);
-            p += HASH_SIZE * 2;
+        if (tmp) {
+            free(tmp);
         }
-
-        // CB Merkle branch side mask
-	    memcpy(p, "00000000", 8);
-        p += 8;
+        tmp = merkle_hashes;
     }
-
-    // Aux blockchain branch
-    { 
-        // First 2 for branch length, last 8 for side mask
-	    memcpy(p, "00", 2);
-        p += 2;
-        memcpy(p, "00000000", 8);
-        p += 8;
-    }
-
-    // Parent block
-    memcpy(p, blockheader, BLOCK_HEADER_SIZE * 2);
-    p += BLOCK_HEADER_SIZE * 2;
-
-    *p = '\0';
+    
+    // auxpow = coinbase in parent_block + parent_block hash + coinbase_branch + blockchain_branch + parent_block
+    // Refer to https://en.bitcoin.it/wiki/Merged_mining_specification#Aux_proof-of-work_block
+    ASPRINTF(&auxpow_hex, "%s%s%02x%s%s%s%s%s", coinbase_hex, blockhash, wb->merkles, merkle_hashes == NULL ? "" : merkle_hashes, "00000000", "00", "00000000", blockheader);
 
     ASPRINTF(&message, "emcsubmitauxblock:%s", auxpow_hex);
 
