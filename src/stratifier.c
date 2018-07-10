@@ -1579,16 +1579,19 @@ retry:
 
         if (emcdata->target[0] != '\0') {
             char hash_swap[HASH_SIZE], tmp[HASH_SIZE];
-            char target[HEX_HASH_SIZE + 1];
+            char target[STR_HEX_HASH_SIZE];
 
-            strncpy(target, emcdata->target, sizeof(target));
+            strncpy(target, emcdata->target, sizeof(target) - 1);
+            target[sizeof(target) - 1] = '\0';
+
             hex2bin(hash_swap, target, sizeof(hash_swap));
             double emc_diff = diff_from_target((uchar *)hash_swap);
             wb->emc_diff = emc_diff;
         }
 
         if (strncmp(emcdata->hashmerge, emcdata->lasthashmerge, sizeof(emcdata->lasthashmerge) - 1)) {
-            strncpy(emcdata->lasthashmerge, emcdata->hashmerge, sizeof(emcdata->lasthashmerge));
+            strncpy(emcdata->lasthashmerge, emcdata->hashmerge, sizeof(emcdata->lasthashmerge) - 1);
+			emcdata->lasthashmerge[sizeof(emcdata->lasthashmerge) - 1] = '\0';
         }
     }
 

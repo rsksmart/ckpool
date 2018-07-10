@@ -51,11 +51,14 @@ bool emc_getauxblock(connsock_t *cs, emc_auxblock_t *auxblock)
 
 	chainid = json_integer_value(json_object_get(res_val, "chainid"));
 	
-	strncpy(auxblock->hashmerge, hashmerge, STR_HEX_HASH_SIZE);
+	strncpy(auxblock->hashmerge, hashmerge, STR_HEX_HASH_SIZE - 1);
+	auxblock->hashmerge[STR_HEX_HASH_SIZE - 1] = '\0';
+
 	hex2bin(hashmergebin, hashmerge, BIN_HASH_SIZE);
 	memcpy(auxblock->hashmergebin, hashmergebin, BIN_HASH_SIZE);
 
-	strncpy(auxblock->target, target, STR_HEX_HASH_SIZE);
+	strncpy(auxblock->target, target, STR_HEX_HASH_SIZE - 1);
+	auxblock->target[STR_HEX_HASH_SIZE - 1] = '\0';
 
     auxblock->chainid = chainid;
 
@@ -360,8 +363,13 @@ retry:
 			goto reconnect;
 		} else {
 			memcpy(emcdata->hashmergebin, auxblock->hashmergebin, sizeof(emcdata->hashmergebin));
-			strncpy(emcdata->hashmerge, auxblock->hashmerge, sizeof(emcdata->hashmerge));
-			strncpy(emcdata->target, auxblock->target, sizeof(emcdata->target));
+
+			strncpy(emcdata->hashmerge, auxblock->hashmerge, sizeof(emcdata->hashmerge) - 1);
+			emcdata->hashmerge[sizeof(emcdata->hashmerge) - 1] = '\0';
+
+			strncpy(emcdata->target, auxblock->target, sizeof(emcdata->target) - 1);
+			emcdata->target[sizeof(emcdata->target) - 1] = '\0';
+			
 			emcdata->chainid = auxblock->chainid;
 
 			send_unix_msg(umsg->sockd, emcdata->hashmerge);
