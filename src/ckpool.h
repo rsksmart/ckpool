@@ -227,6 +227,12 @@ struct ckpool_instance {
 	bool wmem_warn;
 	bool rmem_warn;
 
+	/* Enable development mode (custom target difficulties) */
+	bool devmode;
+	double devmode_miner_diff;
+	double devmode_rsk_diff;
+	double devmode_btc_diff;
+
 	/* Bitcoind data */
 	int btcds;
 	char **btcdurl;

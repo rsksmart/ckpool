@@ -31,8 +31,6 @@
 #include "generator.h"
 #include "rootstock.h"
 
-#include "rsktestconfig.h"
-
 #define HASH_SIZE 32
 #define BLOCK_HEADER_SIZE 80
 
@@ -5892,8 +5890,8 @@ static void stratum_send_diff(sdata_t *sdata, const stratum_instance_t *client)
 
 	double client_diff = client->diff;
 
-	if(DEV_MODE_ON){
-		client_diff = MINER_DIFF;
+	if(client->ckp->devmode){
+		client_diff = client->ckp->devmode_miner_diff;
 	}
 
 	JSON_CPACK(json_msg, "{s[f]soss}", "params", client_diff, "id", json_null(),
@@ -5998,8 +5996,8 @@ static void add_submit(ckpool_t *ckp, stratum_instance_t *client, const double d
 
 	/* Diff rate ratio */
 	dsps = client->dsps5 / bias;
-	if (DEV_MODE_ON) {
-		drr = dsps / (MINER_DIFF + (double)client->diff);
+	if (ckp->devmode) {
+		drr = dsps / ((double)client->diff + client->ckp->devmode_miner_diff);
 	} else {
 		drr = dsps / (double)client->diff;
 	}
@@ -6091,9 +6089,9 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	bool submit_bitcoind = false;
 	bool submit_rskd = false;
 
-	if(DEV_MODE_ON){
-		sdata->current_workbase->rsk_diff = RSK_CKPOOL_DIFF;
-		sdata->current_workbase->network_diff = BTC_CKPOOL_DIFF;
+	if(client->ckp->devmode){
+		sdata->current_workbase->rsk_diff = client->ckp->devmode_rsk_diff;
+		sdata->current_workbase->network_diff = client->ckp->devmode_btc_diff;
 	}
 
 	/* Rootstock difficulty */
@@ -6513,7 +6511,7 @@ out_nowb:
 	else
 		ckdbq_add(ckp, ID_SHARES, val);
 out:
-	if (!sdata->wbincomplete && (((!result && !submit) || !share) && !DEV_MODE_ON)) {
+	if (!sdata->wbincomplete && (((!result && !submit) || !share) && !(client->ckp->devmode))) {
 		/* Is this the first in a run of invalids? */
 		if (client->first_invalid < client->last_share.tv_sec || !client->first_invalid)
 			client->first_invalid = now_t;

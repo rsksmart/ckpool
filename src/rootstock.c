@@ -17,8 +17,6 @@
 #include "jansson.h"
 #include "hashtable.h"
 
-#include "rsktestconfig.h"
-
 #define BIN_HASH_SIZE sizeof(((rsk_getwork_t*)0)->blockhashmergebin)
 #define HEX_HASH_SIZE sizeof(((rsk_getwork_t*)0)->blockhashmerge)
 #define HEX_TARGET_SIZE sizeof(((rsk_getwork_t*)0)->target)
