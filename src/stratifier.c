@@ -5890,7 +5890,8 @@ static void stratum_send_diff(sdata_t *sdata, const stratum_instance_t *client)
 
 	double client_diff = client->diff;
 
-	if(client->ckp->devmode){
+	if(client->ckp->devmode && (0 < client->ckp->devmode_miner_diff)){
+		LOGDEBUG("ROOTSTOCK: devmode miner diff %lf", client->ckp->devmode_miner_diff);
 		client_diff = client->ckp->devmode_miner_diff;
 	}
 
@@ -5996,7 +5997,7 @@ static void add_submit(ckpool_t *ckp, stratum_instance_t *client, const double d
 
 	/* Diff rate ratio */
 	dsps = client->dsps5 / bias;
-	if (ckp->devmode) {
+	if (ckp->devmode && (0 < client->ckp->devmode_miner_diff)) {
 		drr = dsps / ((double)client->diff + client->ckp->devmode_miner_diff);
 	} else {
 		drr = dsps / (double)client->diff;
@@ -6090,8 +6091,14 @@ test_blocksolve(const stratum_instance_t *client, const workbase_t *wb, const uc
 	bool submit_rskd = false;
 
 	if(client->ckp->devmode){
-		sdata->current_workbase->rsk_diff = client->ckp->devmode_rsk_diff;
-		sdata->current_workbase->network_diff = client->ckp->devmode_btc_diff;
+		if (0 < client->ckp->devmode_rsk_diff) {
+			LOGDEBUG("ROOTSTOCK: devmode rsk diff %lf", client->ckp->devmode_rsk_diff);
+			sdata->current_workbase->rsk_diff = client->ckp->devmode_rsk_diff;
+		}
+		if (0 < client->ckp->devmode_btc_diff) {
+			LOGDEBUG("ROOTSTOCK: devmode btc diff %lf", client->ckp->devmode_btc_diff);
+			sdata->current_workbase->network_diff = client->ckp->devmode_btc_diff;
+		}
 	}
 
 	/* Rootstock difficulty */

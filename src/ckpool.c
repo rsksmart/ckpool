@@ -1952,12 +1952,6 @@ int main(int argc, char **argv)
 		quit(0, "No redirect entries found in config file %s", ckp.config);
 	if (!ckp.rskpollperiod)
 		ckp.rskpollperiod = ckp.blockpoll;
-	if (!ckp.devmode_miner_diff)
-		ckp.devmode_miner_diff = 0.005;
-	if (!ckp.devmode_rsk_diff)
-		ckp.devmode_rsk_diff = 0.0;
-	if (!ckp.devmode_btc_diff)
-		ckp.devmode_btc_diff = 0.1;
 
 	/* Create the log directory */
 	trail_slash(&ckp.logdir);
@@ -1988,10 +1982,6 @@ int main(int argc, char **argv)
 	if (!open_logfile(&ckp))
 		quit(1, "Failed to make open log file %s", buf);
 	launch_logger(&ckp);
-
-	if (ckp.devmode) {
-		LOGINFO_RSK("devmode enabled (custom target difficulties)");
-	}
 
 	ckp.main.ckp = &ckp;
 	ckp.main.processname = strdup("main");
