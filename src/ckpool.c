@@ -1575,6 +1575,11 @@ static void parse_config(ckpool_t *ckp)
 	json_get_int(&ckp->rskpollperiod, json_conf, "rskpollperiod");
 	json_get_int(&ckp->rsknotifypolicy, json_conf, "rsknotifypolicy");
 
+	json_get_bool(&ckp->devmode, json_conf, "devmode");
+	json_get_double(&ckp->devmode_miner_diff, json_conf, "devmode_miner_diff");
+	json_get_double(&ckp->devmode_rsk_diff, json_conf, "devmode_rsk_diff");
+	json_get_double(&ckp->devmode_btc_diff, json_conf, "devmode_btc_diff");
+
 	json_decref(json_conf);
 }
 
